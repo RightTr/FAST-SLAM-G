@@ -7,4 +7,4 @@ Log/*.pdf
 .vscode/settings.json
 PCD/*.pcd
 .vscode
-.package.xml
+package.xml

@@ -279,9 +279,11 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &
     return true;
 }
 
+#ifdef USE_ROS2
 rclcpp::Time convert_to_rclcpp_time(double timestamp){
     int32_t sec = std::floor(timestamp);
     uint32_t nanosec = static_cast<uint32_t>((timestamp - sec) * 1e9);
     return rclcpp::Time(sec, nanosec);
 }
+#endif
 #endif

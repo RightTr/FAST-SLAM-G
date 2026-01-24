@@ -55,7 +55,7 @@ include_directories(
 
 
 find_package(catkin QUIET)
-if(CATKIN_FOUND)
+if(catkin_FOUND)
   message(STATUS "ROS1 detected")
     set(USE_ROS1 ON)
 endif()

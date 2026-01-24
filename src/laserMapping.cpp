@@ -118,6 +118,16 @@ using Pcl2MsgConstPtr = sensor_msgs::msg::PointCloud2::ConstPtr;
 using ImuMsg = sensor_msgs::msg::Imu;
 #endif
 
+inline bool ros_ok(){
+    #ifdef USE_ROS1
+    return ros::ok();
+    #elif defined(USE_ROS2)
+    return rclcpp::ok();
+    #else
+    return true;
+    #endif
+}
+
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
 #define MAXN                (720000)
@@ -427,7 +437,7 @@ void livox_pcl_cbk(const LivoxCustomMsgConstPtr &msg)
 }
 
 void imu_cbk(const ImuMsgConstPtr &msg_in) 
-{
+{   
     publish_count ++;
     // cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<endl;
     ImuMsgPtr msg(new ImuMsg(*msg_in));
@@ -1187,6 +1197,8 @@ int main(int argc, char** argv)
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));
 
+    // extrinT: LiDAR position in the IMU coordinate frame !!!
+    // extrinR: LiDAR rotation in the IMU coordinate frame !!!
     Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
     Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
@@ -1235,6 +1247,10 @@ int main(int argc, char** argv)
         ros::Publisher pubPath          = nh.advertise<nav_msgs::Path> 
                 ("/path", 100000);
         ros::Publisher pubOdomHighFreq  = nh.advertise<nav_msgs::Odometry> ("/OdometryHighFreq", 100000);
+        p_pre->pub_corn = nh.advertise<sensor_msgs::PointCloud2>
+                ("/corn_feature", 100000);
+        p_pre->pub_surf = nh.advertise<sensor_msgs::PointCloud2>
+                ("/surf_feature", 100000);
     #elif defined(USE_ROS2)
         std::shared_ptr<rclcpp::SubscriptionBase> sub_pcl;
         if (p_pre->lidar_type == AVIA) {
@@ -1273,11 +1289,7 @@ int main(int argc, char** argv)
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     RateType rate(5000);
-    #ifdef USE_ROS1
-        bool status = ros::ok();
-    #elif defined(USE_ROS2)
-        bool status = rclcpp::ok();
-    #endif
+    bool status = ros_ok();
     while (status)
     {
         if (flg_exit) break;
@@ -1357,7 +1369,7 @@ int main(int argc, char** argv)
 
             p_imu->Process(Measures, kf, feats_undistort);
             state_point = kf.get_x();
-            pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+            pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I; // LiDAR position in the world coordinate frame
 
             if (feats_undistort->empty() || (feats_undistort == NULL))
             {
