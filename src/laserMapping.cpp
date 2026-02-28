@@ -1514,6 +1514,7 @@ int main(int argc, char** argv)
             status = rclcpp::ok();
         #endif
             rate.sleep();
+    }            
 
     /**************** save map ****************/
     /* 1. make sure you have enough memories
@@ -1547,8 +1548,7 @@ int main(int argc, char** argv)
         }
         fclose(fp2);
     }
-
-    }
+    
     th.join();
     return 0;
 }
