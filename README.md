@@ -1,6 +1,6 @@
 # FAST-LIO-SAM
 
-A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency front-end with a **LIO-SAM-style** factor graph back-end for global optimization, supporting **RoboSense series LiDARs**, and compatible with both **ROS1** and **ROS2**.
+A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, supporting **RoboSense series LiDARs**, and compatible with both **ROS1** and **ROS2**.
 
 ## Related Works
 
@@ -8,9 +8,13 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 
 [FAST-LIO: A Fast, Robust LiDAR-inertial Odometry Package by Tightly-Coupled Iterated Kalman Filter](https://arxiv.org/abs/2010.08196)
 
+[FAST-LIO official repository](https://github.com/hku-mars/FAST_LIO.git)
+
 [FAST_LIO_SAM](https://github.com/kahowang/FAST_LIO_SAM.git)
 
 [LIO-SAM](https://github.com/TixiaoShan/LIO-SAM.git)
+
+[robosense_fast_lio](https://github.com/RuanJY/robosense_fast_lio.git)
 
 ## Contributions
 
@@ -46,9 +50,7 @@ git submodule update --init --recursive
 
 ```bash
 cd fastlio_sam_ws 
-
 source devel/setup.bash
-
 # e.g.
 roslaunch fast_lio mapping_mid360.launch
 ```
@@ -73,18 +75,25 @@ git submodule update --init --recursive
 
 ```bash
 cd fastlio_ws 
-
 source install/setup.bash
-
 # e.g.
 ros2 launch fast_lio mapping_mid360.launch.py
 ```
 
-### Relocalization Mode
+### Launch LIO-SAM-style Backend
 
-The proposed system supports relocalization using manually set odometry poses. Once odometry poses are published to the */reloc_topic* (according to the following .yaml file), the system will reset the system and the initial pose according to your input.
+```bash
+cd fastlio_ws 
+source devel/setup.bash
+# e.g.
+roslaunch fast_lio sam_airy.launch
+```
 
-Run Relocalization Mode:
+### Relocalization
+
+The modified system supports relocalization using manually set odometry poses. Once odometry poses are published to the */reloc_topic* (according to the following .yaml file), the system will reset the system and the initial pose according to your input.
+
+Run relocalization mode:
 
 ```bash
 # e.g.
@@ -101,11 +110,11 @@ ros2 launch fast_lio reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
-### High Frequency Odometry based on IMU Propagation
+### High Frequency Odometry via IMU propagation between LiDAR scans
 
 Subscribe the topic */OdometryHighFreq* to receive high frequency odometry output via IMU propagation between LiDAR scans.
 
-### RoboSense Series LiDAR Adpatation
+### RoboSense Series LiDAR Adaptation
 
 Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy). Check the related files in ./config and ./launch folder.
 
@@ -118,4 +127,4 @@ roslaunch fast_lio mapping_airy.launch
 
 * Robosense Airy LiDARs Support ✅ (2026.1.24)
 * Robosense Airy Adaption Test ✅ (2026.3.6)
-* FastLIO frontend with LIO-SAM-style factor graph backend
+* Integrate Fast-LIO frontend with LIO-SAM-style backend
