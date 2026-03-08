@@ -89,9 +89,6 @@ ISAM2 *isam;
 Values isamCurrentEstimate;
 Eigen::MatrixXd poseCovariance;
 
-ros::Publisher pubLaserCloudSurround;
-ros::Publisher pubLaserOdometryGlobal;
-ros::Publisher pubLaserOdometryIncremental;
 ros::Publisher pubKeyPoses;
 ros::Publisher pubPath;
 
@@ -99,14 +96,9 @@ ros::Publisher pubHistoryKeyFrames;
 ros::Publisher pubIcpKeyFrames;
 ros::Publisher pubRecentKeyFrames;
 ros::Publisher pubRecentKeyFrame;
-ros::Publisher pubCloudRegisteredRaw;
 ros::Publisher pubLoopConstraintEdge;
 
-ros::Publisher pubSLAMInfo;
-
-ros::Subscriber subCloud;
 ros::Subscriber subGPS;
-ros::Subscriber subLoop;
 
 ros::ServiceServer srvSaveMap;
 
@@ -141,6 +133,8 @@ pcl::VoxelGrid<PointType> downSizeFilterICP;
 vector<pcl::PointCloud<PointType>::Ptr> featCloudKeyFrames;
 
 KD_TREE_PUBLIC<PointType>::Ptr ikdtreeHistoryKeyPoses;
+
+KD_TREE_PUBLIC<PointType>::PointVector initPoses3D;
 
 Eigen::Affine3f pclPointToAffine3f(PointTypePose thisPoint)
 { 
@@ -213,6 +207,8 @@ void allocateMemory()
     copy_cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
     copy_cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
 
+    ikdtreeHistoryKeyPoses.reset(new KD_TREE_PUBLIC<PointType>());
+
     for (int i = 0; i < 6; ++i){
         transformTobeMapped[i] = 0;
     }
@@ -228,6 +224,7 @@ void MapOptimizationInit()
     #ifdef USE_ROS1
     ros::NodeHandle nh;
     pubKeyPoses = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/trajectory", 1);
+    pubPath = nh.advertise<nav_msgs::Path>("lio_sam/mapping/path", 1);
     pubLoopConstraintEdge = nh.advertise<visualization_msgs::MarkerArray>("lio_sam/loop_closure_constraints", 1);
     subGPS = nh.subscribe<nav_msgs::Odometry> (gpsTopic, 200, gpsHandler, ros::TransportHints().tcpNoDelay());
     
@@ -294,10 +291,14 @@ bool detectLoopClosureDistance(int *latestID, int *closestID)
     if (it != loopIndexContainer.end())
         return false;
 
+    if (ikdtreeHistoryKeyPoses->Root_Node == nullptr)
+        return false;
+
     // find the closest history key frame
     KD_TREE_PUBLIC<PointType>::PointVector pointSearchPoses3D;
+    std::vector<float> pointSearchSqDisLoop;
     
-    ikdtreeHistoryKeyPoses->Radius_Search(copy_cloudKeyPoses3D->back(), historyKeyframeSearchRadius, pointSearchPoses3D);
+    ikdtreeHistoryKeyPoses->Nearest_Search(copy_cloudKeyPoses3D->back(), ikdtreeSearchNeighborNum, pointSearchPoses3D, pointSearchSqDisLoop, historyKeyframeSearchRadius);
     for (int i = 0; i < (int)pointSearchPoses3D.size(); ++i)
     {
         int id = pointSearchPoses3D[i].intensity; // index stored in intensity field
@@ -313,12 +314,6 @@ bool detectLoopClosureDistance(int *latestID, int *closestID)
 
     *latestID = loopKeyCur;
     *closestID = loopKeyPre;
-     
-    // #ifdef USE_ROS1
-    //     ROS_INFO("Loop closure detected between keyframe %d and keyframe %d", loopKeyCur, loopKeyPre);
-    // #elif defined(USE_ROS2)
-    //     RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "Loop closure detected between keyframe %d and keyframe %d", loopKeyCur, loopKeyPre);
-    // #endif
 
     return true;
 }
@@ -597,6 +592,15 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
     pcl::PointCloud<PointType>::Ptr featCloudKeyFrame(new pcl::PointCloud<PointType>());
     pcl::copyPointCloud(*feats_undistort, *featCloudKeyFrame);
     featCloudKeyFrames.push_back(featCloudKeyFrame);
+
+    if (ikdtreeHistoryKeyPoses->Root_Node == nullptr) {
+        initPoses3D.push_back(thisPose3D);
+        if (cloudKeyPoses3D->points.size() < 10)
+            return;
+        ikdtreeHistoryKeyPoses->Build(initPoses3D);
+    } else {
+        ikdtreeHistoryKeyPoses->Add_Point(thisPose3D);
+    }
 }
 
 void updatePath(const PointTypePose& pose_in)
@@ -618,6 +622,8 @@ void updatePath(const PointTypePose& pose_in)
 
 void ReconstructIkdTree()
 {
+    if (ikdtreeHistoryKeyPoses->Root_Node == nullptr)
+        return;
     if (cloudKeyPoses3D->points.empty())
         return;
 
@@ -666,13 +672,18 @@ void correctPoses()
     }
 }
 
-void publishKeyFramePoses()
+void publishSamMsg()
 {
     if (cloudKeyPoses3D->points.empty())
         return;
     // publish key poses
     publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, "camera_init");
-
+    if (pubPath.getNumSubscribers() != 0)
+    {
+        globalPath.header.stamp = timeLaserInfoStamp;
+        globalPath.header.frame_id = "camera_init";
+        pubPath.publish(globalPath);
+    }
 }
 
 void visualizeLoopClosure()

@@ -40,6 +40,8 @@ extern float globalMapVisualizationLeafSize;
 
 extern float mappingICPSize;
 
+extern int ikdtreeSearchNeighborNum;
+
 #ifdef USE_ROS1
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>

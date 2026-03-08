@@ -1516,7 +1516,7 @@ int main(int argc, char** argv)
                 update_state_ikfom(); // Update current state_point
                 correctPoses();
 
-                publishKeyFramePoses();
+                publishSamMsg();
             }
 
             /******* Publish odometry *******/

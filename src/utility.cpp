@@ -37,6 +37,8 @@ float globalMapVisualizationLeafSize;
 
 float mappingICPSize;
 
+int ikdtreeSearchNeighborNum;
+
 #ifdef USE_ROS1
 
 void read_liosam_params(ros::NodeHandle& nh) {
@@ -76,6 +78,7 @@ void read_liosam_params(ros::NodeHandle& nh) {
     nh.param<float>("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
 
     nh.param<float>("lio_sam/mappingICPSize", mappingICPSize, 0.2);
+    nh.param<int>("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
 }
 
 #elif defined(USE_ROS2)

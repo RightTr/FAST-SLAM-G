@@ -9,7 +9,7 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
 
 void correctPoses();
 
-void publishKeyFramePoses();
+void publishSamMsg();
 
 void loopClosureThread();
 
