@@ -2,6 +2,8 @@
 #define MAP_OPTIMIZATION_H
 
 extern float transformTobeMapped[6];
+extern Eigen::Vector3d translationLidarToIMU;
+extern Eigen::Matrix3d rotationLidarToIMU;
 
 void MapOptimizationInit();
 
@@ -14,5 +16,7 @@ void publishSamMsg();
 void loopClosureThread();
 
 void setLaserCurTime(double lidar_end_time);
+
+void visualizeGlobalMapThread();
 
 #endif

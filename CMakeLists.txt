@@ -104,7 +104,9 @@ if(USE_ROS1)
     INCLUDE_DIRS
   )
 
-  add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp src/utility.cpp src/MapOptimization.cpp)
+  add_executable(fastlio_mapping src/laserMapping.cpp 
+    include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp 
+    src/utility.cpp src/mapOptimization.cpp)
   target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam)
   target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 endif()

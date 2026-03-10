@@ -6,18 +6,14 @@ Panels:
       Expanded:
         - /Global Options1
         - /mapping1
-        - /mapping1/surround1
-        - /mapping1/currPoints1
         - /mapping1/currPoints1/Autocompute Value Bounds1
-        - /Odometry1/Odometry1
+        - /Odometry1
         - /Odometry1/Odometry1/Shape1
         - /Odometry1/Odometry1/Covariance1
         - /Odometry1/Odometry1/Covariance1/Position1
         - /Odometry1/Odometry1/Covariance1/Orientation1
-        - /Path1
-        - /MarkerArray1
         - /MarkerArray1/Namespaces1
-        - /Path2
+        - /Keyframe1
       Splitter Ratio: 0.6432291865348816
     Tree Height: 782
   - Class: rviz/Selection
@@ -37,7 +33,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: surround
+    SyncSource: KeyframeXYZ
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -158,7 +154,7 @@ Visualization Manager:
           Use Fixed Frame: true
           Use rainbow: true
           Value: false
-      Enabled: true
+      Enabled: false
       Name: mapping
     - Class: rviz/Group
       Displays:
@@ -197,6 +193,30 @@ Visualization Manager:
           Topic: /Odometry
           Unreliable: false
           Value: true
+        - Alpha: 0
+          Buffer Length: 2
+          Class: rviz/Path
+          Color: 25; 255; 255
+          Enabled: true
+          Head Diameter: 0
+          Head Length: 0
+          Length: 0.30000001192092896
+          Line Style: Billboards
+          Line Width: 0.05000000074505806
+          Name: Path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 25; 255; 255
+          Pose Style: None
+          Queue Size: 10
+          Radius: 0.029999999329447746
+          Shaft Diameter: 0.4000000059604645
+          Shaft Length: 0.4000000059604645
+          Topic: /path
+          Unreliable: false
+          Value: true
       Enabled: true
       Name: Odometry
     - Alpha: 1
@@ -207,30 +227,6 @@ Visualization Manager:
       Radius: 0.10000000149011612
       Reference Frame: <Fixed Frame>
       Show Trail: false
-      Value: true
-    - Alpha: 0
-      Buffer Length: 2
-      Class: rviz/Path
-      Color: 25; 255; 255
-      Enabled: true
-      Head Diameter: 0
-      Head Length: 0
-      Length: 0.30000001192092896
-      Line Style: Billboards
-      Line Width: 0.05000000074505806
-      Name: Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 25; 255; 255
-      Pose Style: None
-      Queue Size: 10
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.4000000059604645
-      Shaft Length: 0.4000000059604645
-      Topic: /path
-      Unreliable: false
       Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: false
@@ -295,34 +291,121 @@ Visualization Manager:
       Marker Topic: /lio_sam/loop_closure_constraints
       Name: MarkerArray
       Namespaces:
-        loop_edges: true
-        loop_nodes: true
+        {}
       Queue Size: 100
       Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz/Path
-      Color: 255; 0; 0
+    - Class: rviz/Group
+      Displays:
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Min Color: 0; 0; 0
+          Name: KeyframeXYZ
+          Position Transformer: XYZ
+          Queue Size: 10
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.10000000149011612
+          Style: Flat Squares
+          Topic: /lio_sam/trajectory
+          Unreliable: false
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Min Color: 0; 0; 0
+          Name: KeyframeRecent
+          Position Transformer: XYZ
+          Queue Size: 10
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.009999999776482582
+          Style: Flat Squares
+          Topic: /lio_sam/mapping/cloud_recent_keyframe
+          Unreliable: false
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+        - Alpha: 1
+          Autocompute Intensity Bounds: true
+          Autocompute Value Bounds:
+            Max Value: 10
+            Min Value: -10
+            Value: true
+          Axis: Z
+          Channel Name: intensity
+          Class: rviz/PointCloud2
+          Color: 255; 255; 255
+          Color Transformer: Intensity
+          Decay Time: 0
+          Enabled: true
+          Invert Rainbow: false
+          Max Color: 255; 255; 255
+          Min Color: 0; 0; 0
+          Name: KeyframeGlobal
+          Position Transformer: XYZ
+          Queue Size: 10
+          Selectable: true
+          Size (Pixels): 3
+          Size (m): 0.009999999776482582
+          Style: Flat Squares
+          Topic: /lio_sam/mapping/cloud_global
+          Unreliable: false
+          Use Fixed Frame: true
+          Use rainbow: true
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz/Path
+          Color: 255; 0; 0
+          Enabled: true
+          Head Diameter: 0.30000001192092896
+          Head Length: 0.20000000298023224
+          Length: 0.30000001192092896
+          Line Style: Billboards
+          Line Width: 0.05000000074505806
+          Name: KeyframePath
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 255; 85; 255
+          Pose Style: None
+          Queue Size: 10
+          Radius: 0.029999999329447746
+          Shaft Diameter: 0.10000000149011612
+          Shaft Length: 0.10000000149011612
+          Topic: /lio_sam/mapping/path
+          Unreliable: false
+          Value: true
       Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Billboards
-      Line Width: 0.05000000074505806
-      Name: Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Queue Size: 10
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic: /lio_sam/mapping/path
-      Unreliable: false
-      Value: true
+      Name: Keyframe
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -351,7 +434,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 7.088837146759033
+      Distance: 60.48106384277344
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -359,17 +442,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.818666934967041
-        Y: -0.9574705958366394
-        Z: -0.8943142890930176
+        X: -14.423202514648438
+        Y: -0.9560307860374451
+        Z: 2.252654790878296
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: true
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1447960138320923
+      Pitch: 1.0347964763641357
       Target Frame: global
-      Yaw: 4.055323123931885
+      Yaw: 0.2871786653995514
     Saved: ~
 Window Geometry:
   Displays:
@@ -387,5 +470,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1567
-  X: 800
-  Y: 250
+  X: 3292
+  Y: 231
