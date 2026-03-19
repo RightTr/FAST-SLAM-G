@@ -818,8 +818,6 @@ void publishGlobalMap() {
     ikdtreeHistoryKeyPoses->Radius_Search(cloudKeyPoses3D->back(), globalMapVisualizationSearchRadius, globalMapSearchPoses3D);
     mtx.unlock();
 
-    std::cout << "globalMapSearchPoses3D size: " << globalMapSearchPoses3D.size() << endl;
-
     for (int i = 0; i < (int)globalMapSearchPoses3D.size(); ++i)
         globalMapKeyPoses->push_back(cloudKeyPoses3D->points[globalMapSearchPoses3D[i].intensity]); // index stored in intensity field
     // downsample near selected key frames
