@@ -53,7 +53,7 @@ using ImuMsgPtr = sensor_msgs::Imu::Ptr;
 using LivoxCustomMsgConstPtr = livox_ros_driver2::CustomMsg::ConstPtr;
 using LivoxCustomMsg = livox_ros_driver2::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::PointCloud2::ConstPtr;
-using LivoxMsg = PointCloud2Msg;  // ROS1 Livox driver outputs PointCloud2
+using LivoxMsg = livox_ros_driver2::CustomMsg;
 
 #elif defined(USE_ROS2)
 #include <rclcpp/rclcpp.hpp>

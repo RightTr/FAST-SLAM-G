@@ -83,6 +83,8 @@ ros2 launch fast_lio_sam reloc_mid360.launch.py
 
 ## ZUPT Detection and Handling
 
+The zero-velocity pseudo-observation updates the EKF when the acceleration norm and gyroscope readings fall below certain thresholds.
+
 Check the related parameters in the .yaml files.
 
 ```yaml
@@ -109,6 +111,7 @@ roslaunch fast_lio_sam mapping_airy.launch
 
 - [x] Full ROS2 adaptation
 - [ ] ROS2 Adaptation Test
+- [ ] GNSS integration
 
 ## 📚 Related Works
 

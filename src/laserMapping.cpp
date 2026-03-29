@@ -63,6 +63,7 @@ bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool reloc_en = false;
 bool sam_enable = false;
+bool imu_flip = false;
 int lidar_type;
 int odom_imu_frequency;
 bool use_zupt = false;
@@ -318,6 +319,16 @@ void imu_cbk(const ImuMsgConstPtr &msg_in)
     publish_count ++;
     // cout<<"IMU got at: "<<get_ros_time_sec(msg_in->header.stamp)<<endl;
     ImuMsgPtr msg(new ImuMsg(*msg_in));
+
+    if (imu_flip)
+    {
+        msg->angular_velocity.x = -msg->angular_velocity.x;
+        msg->angular_velocity.y = -msg->angular_velocity.y;
+        msg->angular_velocity.z = -msg->angular_velocity.z;
+        msg->linear_acceleration.x = -msg->linear_acceleration.x;
+        msg->linear_acceleration.y = -msg->linear_acceleration.y;
+        msg->linear_acceleration.z = -msg->linear_acceleration.z;
+    }
 
     const double msg_in_stamp_sec = get_ros_time_sec(msg_in->header.stamp);
     msg->header.stamp = get_ros_time(msg_in_stamp_sec - time_diff_lidar_to_imu);
@@ -886,6 +897,7 @@ int main(int argc, char** argv)
     rosparam_get("reloc/reloc_topic", reloc_topic, std::string("/reloc/manual"));
     rosparam_get("common/time_sync_en", time_sync_en, false);
     rosparam_get("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
+    rosparam_get("common/imu_flip", imu_flip, false);
     rosparam_get("filter_size_corner", filter_size_corner_min, 0.5);
     rosparam_get("filter_size_surf", filter_size_surf_min, 0.5);
     rosparam_get("filter_size_map", filter_size_map_min, 0.5);
@@ -945,6 +957,13 @@ int main(int argc, char** argv)
     // extrinR: LiDAR rotation in the IMU coordinate frame !!!
     Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
     Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
+    if (imu_flip)
+    {
+        // IMU frame inversion: coordinates in IMU frame should be transformed consistently.
+        Lidar_T_wrt_IMU = -Lidar_T_wrt_IMU;
+        Lidar_R_wrt_IMU = -Lidar_R_wrt_IMU;
+        ROS_PRINT_WARN("common/imu_flip is ON: IMU measurements and LiDAR-IMU extrinsics are inverted.");
+    }
     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
     p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
