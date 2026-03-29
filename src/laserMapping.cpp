@@ -124,6 +124,7 @@ void SigHandle(int sig)
     flg_exit = true;
     ROS_PRINT_WARN("catch sig %d", sig);
     sig_buffer.notify_all();
+    ros_shutdown();
 }
 
 inline void dump_lio_state_to_log(FILE *fp)  
@@ -620,8 +621,13 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
 void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
 {
     RateType rate(odom_imu_frequency);
-    while (ros_ok()){
-        Pose pose = pbuffer.Pop();
+    while (ros_ok() && !flg_exit){
+        Pose pose;
+        if (!pbuffer.TryPop(pose))
+        {
+            rate.sleep();
+            continue;
+        }
         OdomMsg msg;
         msg.header.stamp = get_ros_time(pose._timestamp);
         msg.header.frame_id = "camera_init";
@@ -666,6 +672,7 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         tf_msg.transform.rotation = msg.pose.pose.orientation;
         br_hf->sendTransform(tf_msg);
 #endif
+        rate.sleep();
     }
 }
 
@@ -1231,7 +1238,7 @@ int main(int argc, char** argv)
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. pcd save will largely influence the real-time performences **/
-    if (pcl_wait_save->size() > 0 && pcd_save_en)
+    if (!flg_exit && pcl_wait_save->size() > 0 && pcd_save_en)
     {
         string file_name = string("scans.pcd");
         string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
@@ -1243,7 +1250,7 @@ int main(int argc, char** argv)
     fout_out.close();
     fout_pre.close();
 
-    if (runtime_pos_log)
+    if (!flg_exit && runtime_pos_log)
     {
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
         FILE *fp2;
