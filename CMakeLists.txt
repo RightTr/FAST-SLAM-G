@@ -143,7 +143,7 @@ if(USE_ROS2)
   install(
   DIRECTORY
     launch_ROS2
-    config_ROS2
+    config
     DESTINATION share/${PROJECT_NAME}
   )
   install(

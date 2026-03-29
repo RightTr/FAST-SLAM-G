@@ -3,7 +3,7 @@
 
 	<arg name="rviz" default="true" />
 
-	<rosparam command="load" file="$(find fast_lio_sam)/config_ROS1/sam/airy.yaml"/>
+	<rosparam command="load" file="$(find fast_lio_sam)/config/sam/airy.yaml"/>
 
     <param name="sam_enable" type="bool" value="1"/>
 	<param name="feature_extract_enable" type="bool" value="0"/>

@@ -3,7 +3,7 @@
 
 	<arg name="rviz" default="true" />
 
-	<rosparam command="load" file="$(find li_pipline)/config_ROS1/sam/l2.yaml"/>
+	<rosparam command="load" file="$(find li_pipline)/config/sam/l2.yaml"/>
 
     <param name="sam_enable" type="bool" value="1"/>
 	<param name="feature_extract_enable" type="bool" value="0"/>
