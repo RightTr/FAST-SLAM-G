@@ -9,6 +9,7 @@
 #include <so3_math.h>
 #include <Eigen/Eigen>
 #include <common_lib.h>
+#include <ros_utils.h>
 #include <pcl/common/io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -291,13 +292,8 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
-  #ifdef USE_ROS1
-    const double &imu_beg_time = v_imu.front()->header.stamp.toSec();
-    const double &imu_end_time = v_imu.back()->header.stamp.toSec();
-  #elif defined(USE_ROS2)
-    const double &imu_beg_time = v_imu.front()->header.stamp.sec + 1e-9 * v_imu.front()->header.stamp.nanosec;
-    const double &imu_end_time = v_imu.back()->header.stamp.sec + 1e-9 * v_imu.back()->header.stamp.nanosec;
-  #endif  
+  const double imu_beg_time = get_ros_time_sec(v_imu.front()->header.stamp);
+  const double imu_end_time = get_ros_time_sec(v_imu.back()->header.stamp);
 
   double pcl_beg_time = meas.lidar_beg_time;
   double pcl_end_time = meas.lidar_end_time;
@@ -329,13 +325,11 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   {
     auto &&head = *(it_imu);
     auto &&tail = *(it_imu + 1);
-    
-    #ifdef USE_ROS1
-      if (head->header.stamp.toSec() < last_lidar_end_time_)    continue;   
-    #elif defined(USE_ROS2)
-      if ((head->header.stamp.sec + 1e-9 * head->header.stamp.nanosec) < last_lidar_end_time_)    continue;   
-    #endif  
-    
+    const double head_time = get_ros_time_sec(head->header.stamp);
+    const double tail_time = get_ros_time_sec(tail->header.stamp);
+
+    if (head_time < last_lidar_end_time_) continue;
+
     angvel_avr<<0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
                 0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
                 0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
@@ -343,32 +337,20 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
                 0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
                 0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
 
-    // fout_imu << setw(10) << head->header.stamp.toSec() - first_lidar_time << " " << angvel_avr.transpose() << " " << acc_avr.transpose() << endl;
+    // fout_imu << setw(10) << head_time - first_lidar_time << " " << angvel_avr.transpose() << " " << acc_avr.transpose() << endl;
 
     acc_avr     = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
-    #ifdef USE_ROS1
-      if(head->header.stamp.toSec() < last_lidar_end_time_)
-      {
-        dt = tail->header.stamp.toSec() - last_lidar_end_time_;
-        // dt = tail->header.stamp.toSec() - pcl_beg_time;
-      }
-      else
-      {
-        dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
-      }
-    #elif defined(USE_ROS2)
-      if((head->header.stamp.sec + 1e-9 * head->header.stamp.nanosec) < last_lidar_end_time_)
-      {
-        dt = (tail->header.stamp.sec + 1e-9 * tail->header.stamp.nanosec) - last_lidar_end_time_;
-        // dt = (tail->header.stamp.sec + 1e-9 * tail->header.stamp.nanosec) - pcl_beg_time;
-      }
-      else
-      {
-        dt = (tail->header.stamp.sec + 1e-9 * tail->header.stamp.nanosec) - (head->header.stamp.sec + 1e-9 * head->header.stamp.nanosec);
-      }
-    #endif  
-    
+    if(head_time < last_lidar_end_time_)
+    {
+      dt = tail_time - last_lidar_end_time_;
+      // dt = tail_time - pcl_beg_time;
+    }
+    else
+    {
+      dt = tail_time - head_time;
+    }
+
     in.acc = acc_avr;
     in.gyro = angvel_avr;
     Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
@@ -385,26 +367,16 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();
-    #ifdef USE_ROS1
-      pbuffer.Push(Pose(imu_state.pos.x(), imu_state.pos.y(), imu_state.pos.z(),
-                      imu_state.rot.x(), imu_state.rot.y(), imu_state.rot.z(), imu_state.rot.w(),
-                      tail->header.stamp.toSec()));
-    #elif defined(USE_ROS2)
-      pbuffer.Push(Pose(imu_state.pos.x(), imu_state.pos.y(), imu_state.pos.z(),
-                      imu_state.rot.x(), imu_state.rot.y(), imu_state.rot.z(), imu_state.rot.w(),
-                      tail->header.stamp.sec + 1e-9 * tail->header.stamp.nanosec));
-    #endif
+    pbuffer.Push(Pose(imu_state.pos.x(), imu_state.pos.y(), imu_state.pos.z(),
+                    imu_state.rot.x(), imu_state.rot.y(), imu_state.rot.z(), imu_state.rot.w(),
+                    tail_time));
     angvel_last = angvel_avr - imu_state.bg;
     acc_s_last  = imu_state.rot * (acc_avr - imu_state.ba);
     for(int i=0; i<3; i++)
     {
       acc_s_last[i] += imu_state.grav[i];
     }
-    #ifdef USE_ROS1
-      double &&offs_t = tail->header.stamp.toSec() - last_lidar_end_time_;
-    #elif defined(USE_ROS2)
-      double &&offs_t = (tail->header.stamp.sec + 1e-9 * tail->header.stamp.nanosec) - last_lidar_end_time_;
-    #endif
+    const double offs_t = tail_time - last_lidar_end_time_;
     IMUpose.push_back(set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.toRotationMatrix()));
   }
 
@@ -487,11 +459,7 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
 
       cov_acc = cov_acc_scale;
       cov_gyr = cov_gyr_scale;
-      #ifdef USE_ROS1
-        ROS_INFO("IMU Initial Done");
-      #elif defined(USE_ROS2)
-        RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "IMU Initial Done");
-      #endif
+
       // ROS_INFO("IMU Initial Done: Gravity: %.4f %.4f %.4f %.4f; state.bias_g: %.4f %.4f %.4f; acc covarience: %.8f %.8f %.8f; gry covarience: %.8f %.8f %.8f",\
       //          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2], mean_acc.norm(), cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
       fout_imu.open(DEBUG_FILE_DIR("imu.txt"),ios::out);

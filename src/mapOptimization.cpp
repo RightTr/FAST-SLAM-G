@@ -2,6 +2,7 @@
 
 #include "utility.h"
 #include "map_optimization.h"
+#include "ros_utils.h"
 
 #include <algorithm>
 
@@ -783,11 +784,7 @@ void loopClosureThread()
     if (loopClosureEnableFlag == false)
         return;
 
-    #ifdef USE_ROS1
-        ROS_INFO("...... Loop Closure Thread Start......");
-    #elif defined(USE_ROS2)
-        RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "...... Loop Closure Thread Start......");
-    #endif
+    ROS_PRINT_INFO("...... Loop Closure Thread Start......");
 
     ros::Rate rate(loopClosureFrequency);
     while (ros::ok())

@@ -1,4 +1,5 @@
 #include "preprocess.h"
+#include "ros_utils.h"
 
 #define RETURN0     0x00
 #define RETURN0AND1 0x10
@@ -260,11 +261,7 @@ void Preprocess::oust64_handler(const Pcl2MsgConstPtr &msg)
   }
   else
   {
-    #ifdef USE_ROS1
-    double time_stamp = msg->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-    double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
-    #endif
+    double time_stamp = get_ros_time_sec(msg->header.stamp);
     // cout << "===================================" << endl;
     // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
     for (int i = 0; i < pl_orig.points.size(); i++)
@@ -476,11 +473,7 @@ void Preprocess::airy_handler(const Pcl2MsgConstPtr& msg) {
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
   pl_surf.reserve(plsize);
-  #ifdef USE_ROS1
-  double time_stamp = msg->header.stamp.toSec();
-  #elif defined(USE_ROS2)
-  double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
-  #endif
+  double time_stamp = get_ros_time_sec(msg->header.stamp);
 
 
   if (feature_enabled)
@@ -953,11 +946,7 @@ void Preprocess::pub_func(const Pcl2Publisher& pub, PointCloudXYZI &pl, const Ti
   pcl::toROSMsg(pl, output);
   output.header.frame_id = "lidar";
   output.header.stamp = ct;
-  #ifdef USE_ROS1 
-  pub.publish(output);
-  #elif defined(USE_ROS2)
-  pub->publish(output);
-  #endif
+  ros_publish(pub, output);
 }
 
 int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct)

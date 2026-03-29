@@ -54,6 +54,7 @@
 #include <atomic>
 #include "posebuffer.h"
 #include <thread>
+#include "ros_utils.h"
 #include "map_optimization.h"
 #include "utility.h"
 
@@ -119,16 +120,6 @@ using LivoxCustomMsg = livox_ros_driver2::msg::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::msg::PointCloud2::ConstPtr;
 using ImuMsg = sensor_msgs::msg::Imu;
 #endif
-
-inline bool ros_ok(){
-    #ifdef USE_ROS1
-    return ros::ok();
-    #elif defined(USE_ROS2)
-    return rclcpp::ok();
-    #else
-    return true;
-    #endif
-}
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -227,11 +218,7 @@ shared_ptr<ImuProcess> p_imu(new ImuProcess());
 void SigHandle(int sig)
 {
     flg_exit = true;
-    #ifdef USE_ROS1
-        ROS_WARN("catch sig %d", sig);
-    #elif defined(USE_ROS2)
-        RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "catch sig %d", sig);
-    #endif
+    ROS_PRINT_WARN("catch sig %d", sig);
     sig_buffer.notify_all();
 }
 
@@ -369,30 +356,18 @@ void standard_pcl_cbk(const Pcl2MsgConstPtr &msg)
     mtx_buffer.lock();
     scan_count ++;
     double preprocess_start_time = omp_get_wtime();
-    #ifdef USE_ROS1
-        if (msg->header.stamp.toSec() < last_timestamp_lidar)
-        {
-            ROS_ERROR("lidar loop back, clear buffer");
-            lidar_buffer.clear();
-        }
-    #elif defined(USE_ROS2)
-        if (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 < last_timestamp_lidar)
-        {
-            RCLCPP_ERROR(rclcpp::get_logger("fast_lio_sam"), "lidar loop back, clear buffer");
-            lidar_buffer.clear();
-        }
-    #endif
+    const double stamp_sec = get_ros_time_sec(msg->header.stamp);
+    if (stamp_sec < last_timestamp_lidar)
+    {
+        ROS_PRINT_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
 
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     lidar_buffer.push_back(ptr);
-    #ifdef USE_ROS1
-        time_buffer.push_back(msg->header.stamp.toSec());
-        last_timestamp_lidar = msg->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-        time_buffer.push_back(msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9);
-        last_timestamp_lidar = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-    #endif  
+    time_buffer.push_back(stamp_sec);
+    last_timestamp_lidar = stamp_sec;
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
     mtx_buffer.unlock();
     sig_buffer.notify_all();
@@ -405,21 +380,13 @@ void livox_pcl_cbk(const LivoxCustomMsgConstPtr &msg)
     mtx_buffer.lock();
     double preprocess_start_time = omp_get_wtime();
     scan_count ++;
-    #ifdef USE_ROS1
-        if (msg->header.stamp.toSec() < last_timestamp_lidar)
-        {
-            ROS_ERROR("lidar loop back, clear buffer");
-            lidar_buffer.clear();
-        }
-        last_timestamp_lidar = msg->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-        if (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 < last_timestamp_lidar)
-        {
-            RCLCPP_ERROR(rclcpp::get_logger("fast_lio_sam"), "lidar loop back, clear buffer");
-            lidar_buffer.clear();
-        }
-        last_timestamp_lidar = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-    #endif
+    const double stamp_sec = get_ros_time_sec(msg->header.stamp);
+    if (stamp_sec < last_timestamp_lidar)
+    {
+        ROS_PRINT_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
+    last_timestamp_lidar = stamp_sec;
     
     if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 && !imu_buffer.empty() && !lidar_buffer.empty() )
     {
@@ -446,38 +413,22 @@ void livox_pcl_cbk(const LivoxCustomMsgConstPtr &msg)
 void imu_cbk(const ImuMsgConstPtr &msg_in) 
 {   
     publish_count ++;
-    // cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<endl;
+    // cout<<"IMU got at: "<<get_ros_time_sec(msg_in->header.stamp)<<endl;
     ImuMsgPtr msg(new ImuMsg(*msg_in));
 
-    #ifdef USE_ROS1
-        msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() - time_diff_lidar_to_imu);
-        if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
-        {
-            msg->header.stamp = \
-            ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
-        }
-
-        double timestamp = msg->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-        msg->header.stamp = rclcpp::Time(msg_in->header.stamp.sec, msg_in->header.stamp.nanosec - static_cast<uint32_t>(time_diff_lidar_to_imu * 1e9));
-        if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
-        {
-            msg->header.stamp = \
-                rclcpp::Time(msg_in->header.stamp.sec, msg_in->header.stamp.nanosec + static_cast<uint32_t>(timediff_lidar_wrt_imu * 1e9));
-        }
-
-        double timestamp = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-    #endif
+    const double msg_in_stamp_sec = get_ros_time_sec(msg_in->header.stamp);
+    msg->header.stamp = get_ros_time(msg_in_stamp_sec - time_diff_lidar_to_imu);
+    if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
+    {
+        msg->header.stamp = get_ros_time(timediff_lidar_wrt_imu + msg_in_stamp_sec);
+    }
+    double timestamp = get_ros_time_sec(msg->header.stamp);
 
     mtx_buffer.lock();
 
     if (timestamp < last_timestamp_imu)
     {
-        #ifdef USE_ROS1
-            ROS_WARN("imu loop back, clear buffer");
-        #elif defined(USE_ROS2)
-            RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "imu loop back, clear buffer");
-        #endif
+        ROS_PRINT_WARN("imu loop back, clear buffer");
         imu_buffer.clear();
     }
 
@@ -491,11 +442,7 @@ void imu_cbk(const ImuMsgConstPtr &msg_in)
 /*** relocation callback ***/
 void reloc_cbk(const PoseStampedMsgConstPtr &msg_in) 
 {
-    #ifdef USE_ROS1
-        double timestamp = msg_in->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-        double timestamp = msg_in->header.stamp.sec + msg_in->header.stamp.nanosec * 1e-9;
-    #endif
+    double timestamp = get_ros_time_sec(msg_in->header.stamp);
     double x = msg_in->pose.position.x;
     double y = msg_in->pose.position.y;
     double z = msg_in->pose.position.z;
@@ -509,13 +456,8 @@ void reloc_cbk(const PoseStampedMsgConstPtr &msg_in)
     reloc_state = RelocState(x, y, z,
                     qx, qy, qz, qw, timestamp);
     relocalize_flag.store(true); 
-    #ifdef USE_ROS1
-        ROS_INFO("Reloc received: (%.3f, %.3f, %.3f), quat=(%.3f, %.3f, %.3f, %.3f)",
-            x, y, z, qx, qy, qz, qw);
-    #elif defined(USE_ROS2)
-        RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "Reloc received: (%.3f, %.3f, %.3f), quat=(%.3f, %.3f, %.3f, %.3f)",
-            x, y, z, qx, qy, qz, qw);
-    #endif
+    ROS_PRINT_INFO("Reloc received: (%.3f, %.3f, %.3f), quat=(%.3f, %.3f, %.3f, %.3f)",
+        x, y, z, qx, qy, qz, qw);
 }
 
 double lidar_mean_scantime = 0.0;
@@ -536,11 +478,7 @@ bool sync_packages(MeasureGroup &meas)
         if (meas.lidar->points.size() <= 1) // time too little
         {
             lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
-            #ifdef USE_ROS1
-                ROS_WARN("Too few input point cloud!\n");
-            #elif defined(USE_ROS2)
-                RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "Too few input point cloud!\n");
-            #endif
+            ROS_PRINT_WARN("Too few input point cloud!");
         }
         else if (meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime)
         {
@@ -566,19 +504,11 @@ bool sync_packages(MeasureGroup &meas)
     }
 
     /*** push imu data, and pop from imu buffer ***/
-    #ifdef USE_ROS1
-        double imu_time = imu_buffer.front()->header.stamp.toSec();
-    #elif defined(USE_ROS2)
-        double imu_time = imu_buffer.front()->header.stamp.sec + imu_buffer.front()->header.stamp.nanosec * 1e-9;
-    #endif
+    double imu_time = get_ros_time_sec(imu_buffer.front()->header.stamp);
     meas.imu.clear();
     while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
     {
-        #ifdef USE_ROS1
-            imu_time = imu_buffer.front()->header.stamp.toSec();
-        #elif defined(USE_ROS2)
-            imu_time = imu_buffer.front()->header.stamp.sec + imu_buffer.front()->header.stamp.nanosec * 1e-9;
-        #endif
+        imu_time = get_ros_time_sec(imu_buffer.front()->header.stamp);
         if(imu_time > lidar_end_time) break;
         meas.imu.push_back(imu_buffer.front());
         imu_buffer.pop_front();
@@ -692,18 +622,9 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
         }
         Pcl2Msg laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-        #ifdef USE_ROS1
-            laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-        #elif defined(USE_ROS2)
-            laserCloudmsg.header.stamp =    
-                convert_to_rclcpp_time(lidar_end_time);
-        #endif
+        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
         laserCloudmsg.header.frame_id = "camera_init";
-        #ifdef USE_ROS1
-            pubLaserCloudFull.publish(laserCloudmsg);
-        #elif defined(USE_ROS2)
-            pubLaserCloudFull->publish(laserCloudmsg);   
-        #endif
+        ros_publish(pubLaserCloudFull, laserCloudmsg);
         publish_count -= PUBFRAME_PERIOD;
     }
 
@@ -751,18 +672,9 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
 
     Pcl2Msg laserCloudmsg;
     pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
-    #ifdef USE_ROS1
-        laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);   
-    #elif defined(USE_ROS2)
-        laserCloudmsg.header.stamp =
-            convert_to_rclcpp_time(lidar_end_time);
-    #endif
+    laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
     laserCloudmsg.header.frame_id = "body";
-    #ifdef USE_ROS1
-        pubLaserCloudFull_body.publish(laserCloudmsg);
-    #elif defined(USE_ROS2)
-        pubLaserCloudFull_body->publish(laserCloudmsg);   
-    #endif
+    ros_publish(pubLaserCloudFull_body, laserCloudmsg);
     publish_count -= PUBFRAME_PERIOD;
 }
 
@@ -777,35 +689,18 @@ void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
     }
     Pcl2Msg laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
-    #ifdef USE_ROS1
-        laserCloudFullRes3.header.stamp = ros::Time().fromSec(lidar_end_time);
-    #elif defined(USE_ROS2)
-        laserCloudFullRes3.header.stamp =
-            convert_to_rclcpp_time(lidar_end_time);
-    #endif  
+    laserCloudFullRes3.header.stamp = get_ros_time(lidar_end_time);
     laserCloudFullRes3.header.frame_id = "camera_init";
-    #ifdef USE_ROS1
-        pubLaserCloudEffect.publish(laserCloudFullRes3);
-    #elif defined(USE_ROS2)
-        pubLaserCloudEffect->publish(laserCloudFullRes3);   
-    #endif
+    ros_publish(pubLaserCloudEffect, laserCloudFullRes3);
 }
 
 void publish_map(const Pcl2Publisher & pubLaserCloudMap)
 {
     Pcl2Msg laserCloudMap;
     pcl::toROSMsg(*featsFromMap, laserCloudMap);
-    #ifdef USE_ROS1
-        laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
-    #elif defined(USE_ROS2)
-        laserCloudMap.header.stamp = convert_to_rclcpp_time(lidar_end_time);
-    #endif
+    laserCloudMap.header.stamp = get_ros_time(lidar_end_time);
     laserCloudMap.header.frame_id = "camera_init";
-    #ifdef USE_ROS1
-        pubLaserCloudMap.publish(laserCloudMap);
-    #elif defined(USE_ROS2)
-        pubLaserCloudMap->publish(laserCloudMap);   
-    #endif
+    ros_publish(pubLaserCloudMap, laserCloudMap);
 }
 
 #ifdef USE_ROS1
@@ -813,14 +708,10 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 {
     RateType rate(odom_imu_frequency);
     while (ros::ok()){
-        Pose pose;
-        if (!pbuffer.TryPop(pose)) {
-            rate.sleep();
-            continue;
-        }
+        Pose pose = pbuffer.Pop();
         OdomMsg msg;
 
-        msg.header.stamp = ros::Time(pose._timestamp);
+        msg.header.stamp = get_ros_time(pose._timestamp);
 
         msg.header.frame_id = "camera_init";
         msg.child_frame_id = "body";
@@ -833,7 +724,7 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         msg.pose.pose.orientation.z = pose._qz;
         msg.pose.pose.orientation.w = pose._qw;
 
-        pubOdomHighFreq.publish(msg);
+        ros_publish(pubOdomHighFreq, msg);
 
         static tf::TransformBroadcaster br_hf;
         tf::Transform transform;
@@ -853,8 +744,6 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         br_hf.sendTransform(
             tf::StampedTransform(transform, msg.header.stamp,
                                 "camera_init", "body_hf"));
-
-        rate.sleep();
     }
 }
 
@@ -862,17 +751,10 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
 {
     RateType rate(odom_imu_frequency);
-    static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf =
-        std::make_shared<tf2_ros::TransformBroadcaster>(node_);
     while (rclcpp::ok()){
-        Pose pose;
-        if (!pbuffer.TryPop(pose)) {
-            rate.sleep();
-            continue;
-        }
+        Pose pose = pbuffer.Pop();
         OdomMsg msg;
-        msg.header.stamp =
-            rclcpp::Time(static_cast<uint64_t>(pose._timestamp * 1e9));
+        msg.header.stamp = get_ros_time(pose._timestamp);
 
         msg.header.frame_id = "camera_init";
         msg.child_frame_id = "body";
@@ -884,7 +766,10 @@ void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& p
         msg.pose.pose.orientation.y = pose._qy;
         msg.pose.pose.orientation.z = pose._qz;
         msg.pose.pose.orientation.w = pose._qw;
-        pubOdomHighFreq->publish(msg);
+        ros_publish(pubOdomHighFreq, msg);
+
+        static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf;
+        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
 
         geometry_msgs::msg::TransformStamped tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
@@ -897,8 +782,6 @@ void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& p
         tf_msg.transform.rotation = msg.pose.pose.orientation;
 
         br_hf->sendTransform(tf_msg);
-
-        rate.sleep();
     }
 }
 #endif
@@ -922,8 +805,8 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
     odomAftMapped.header.frame_id = "camera_init";
     odomAftMapped.child_frame_id = "body";
     set_posestamp(odomAftMapped.pose);
-    odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);// ros::Time().fromSec(lidar_end_time);
-    pubOdomAftMapped.publish(odomAftMapped);
+    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+    ros_publish(pubOdomAftMapped, odomAftMapped);
 
     auto P = kf.get_P();
     for (int i = 0; i < 6; i ++)
@@ -956,9 +839,8 @@ void publish_odometry(const rclcpp::Node::SharedPtr node_, const OdomPublisher &
     odomAftMapped.header.frame_id = "camera_init";
     odomAftMapped.child_frame_id = "body";
     set_posestamp(odomAftMapped.pose);
-    odomAftMapped.header.stamp =
-        convert_to_rclcpp_time(lidar_end_time);
-    pubOdomAftMapped->publish(odomAftMapped);
+    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+    ros_publish(pubOdomAftMapped, odomAftMapped);
 
     auto P = kf.get_P();
     for (int i = 0; i < 6; i ++)
@@ -991,12 +873,7 @@ void publish_odometry(const rclcpp::Node::SharedPtr node_, const OdomPublisher &
 void publish_path(const PathPublisher pubPath)
 {
     set_posestamp(msg_body_pose);
-    #ifdef USE_ROS1
-        msg_body_pose.header.stamp = ros::Time().fromSec(lidar_end_time);
-    #elif defined(USE_ROS2)
-        msg_body_pose.header.stamp =
-            convert_to_rclcpp_time(lidar_end_time);
-    #endif
+    msg_body_pose.header.stamp = get_ros_time(lidar_end_time);
 
         msg_body_pose.header.frame_id = "camera_init";
 
@@ -1008,12 +885,7 @@ void publish_path(const PathPublisher pubPath)
         {
             path.poses.push_back(msg_body_pose);
             path.header.stamp = msg_body_pose.header.stamp;
-
-    #ifdef USE_ROS1
-            pubPath.publish(path);
-    #elif defined(USE_ROS2)
-            pubPath->publish(path);
-    #endif
+            ros_publish(pubPath, path);
         }
 }
 
@@ -1090,11 +962,6 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     if (effct_feat_num < 1)
     {
         ekfom_data.valid = false;
-        #ifdef USE_ROS1
-            ROS_WARN("No Effective Points! \n");
-        #elif defined(USE_ROS2)
-            RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "No Effective Points! \n");
-        #endif
         return;
     }
 
@@ -1344,11 +1211,8 @@ int main(int argc, char** argv)
 
     if (sam_enable) {
         MapOptimizationInit();
-        #ifdef USE_ROS1
-            ROS_INFO("...... LIO-SAM Backend Start......");
-        #elif defined(USE_ROS2)
-            RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "...... LIO-SAM Backend Start......");
-        #endif
+        printf("...... LIO-SAM Backend Start......\n");
+
     }
 
     std::thread odomhighthread([&](){
@@ -1376,31 +1240,20 @@ int main(int argc, char** argv)
     {
         if (flg_exit) break;
         #ifdef USE_ROS1
-            ros::spinOnce();
+            spin_once();
         #elif defined(USE_ROS2)
-            rclcpp::spin_some(node);
+            spin_once(node);
         #endif
 
         if(reloc_en)
         {
             if(relocalize_flag.load())
             {
-                #ifdef USE_ROS1
-                    ROS_WARN("Relocalization Triggered!");
-                #elif defined(USE_ROS2)
-                    RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "Relocalization Triggered!");
-                #endif
-
                 feats_down_world->clear();
                 p_imu->Reset();
                 state_ikfom state_point_reloc;
                 {
                     std::lock_guard<std::mutex> lock(mtx_reloc);
-                    #ifdef USE_ROS1
-                        ROS_INFO("...... Start Relocalization ......");
-                    #elif defined(USE_ROS2)
-                        RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "...... Start Relocalization ......");
-                    #endif
                     state_point_reloc.pos = Eigen::Vector3d(reloc_state.x_, reloc_state.y_, reloc_state.z_);
                     state_point_reloc.rot = Eigen::Quaterniond(reloc_state.qw_, reloc_state.qx_,
                                                 reloc_state.qy_, reloc_state.qz_);
@@ -1409,22 +1262,11 @@ int main(int argc, char** argv)
                 kf.reset(state_point_reloc);
                 ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
                 
-                #ifdef USE_ROS1
-                    ROS_INFO("Reloc: pos=(%.2f %.2f %.2f), quat=(%.2f %.2f %.2f %.2f)",
+                ROS_PRINT_INFO("Reloc: pos=(%.2f %.2f %.2f), quat=(%.2f %.2f %.2f %.2f)",
                     state_point_reloc.pos.x(), state_point_reloc.pos.y(), state_point_reloc.pos.z(),
                     state_point_reloc.rot.x(), state_point_reloc.rot.y(), state_point_reloc.rot.z(), state_point_reloc.rot.w());
-                #elif defined(USE_ROS2)
-                    RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "Reloc: pos=(%.2f %.2f %.2f), quat=(%.2f %.2f %.2f %.2f)",
-                    state_point_reloc.pos.x(), state_point_reloc.pos.y(), state_point_reloc.pos.z(),
-                    state_point_reloc.rot.x(), state_point_reloc.rot.y(), state_point_reloc.rot.z(), state_point_reloc.rot.w());
-                #endif
                 relocalize_flag.store(false);
                 flg_first_scan = true;
-                #ifdef USE_ROS1
-                    ROS_INFO("...... Relocalization Complete ......");
-                #elif defined(USE_ROS2)
-                    RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam"), "...... Relocalization Complete ......");
-                #endif
                 continue;
             }
         }   
@@ -1454,11 +1296,7 @@ int main(int argc, char** argv)
 
             if (feats_undistort->empty() || (feats_undistort == NULL))
             {
-                #ifdef USE_ROS1
-                    ROS_WARN("No point, skip this scan!\n");
-                #elif defined(USE_ROS2)
-                    RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "No point, skip this scan!");
-                #endif
+                ROS_PRINT_WARN("No point, skip this scan!");
                 continue;
             }
 
@@ -1495,11 +1333,7 @@ int main(int argc, char** argv)
             /*** ICP and iterated Kalman filter update ***/
             if (feats_down_size < 5)
             {
-                #ifdef USE_ROS1
-                    ROS_WARN("No point, skip this scan!\n");
-                #elif defined(USE_ROS2)
-                    RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam"), "No point, skip this scan!");
-                #endif
+                ROS_PRINT_WARN("No point, skip this scan!");
                 continue;
             }
             
@@ -1599,11 +1433,7 @@ int main(int argc, char** argv)
             }
         }
 
-        #ifdef USE_ROS1
-            status = ros::ok();
-        #elif defined(USE_ROS2)
-            status = rclcpp::ok();
-        #endif
+        status = ros_ok();
             rate.sleep();
     }            
 
