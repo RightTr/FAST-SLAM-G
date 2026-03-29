@@ -171,6 +171,9 @@ bool reloc_en = false;
 bool sam_enable = false;
 int lidar_type;
 int odom_imu_frequency;
+bool use_zupt = false;
+double zupt_acc_norm_threshold;
+double zupt_gyro_threshold;
 
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
@@ -810,7 +813,11 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 {
     RateType rate(odom_imu_frequency);
     while (ros::ok()){
-        Pose pose = pbuffer.Pop();
+        Pose pose;
+        if (!pbuffer.TryPop(pose)) {
+            rate.sleep();
+            continue;
+        }
         OdomMsg msg;
 
         msg.header.stamp = ros::Time(pose._timestamp);
@@ -846,6 +853,8 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         br_hf.sendTransform(
             tf::StampedTransform(transform, msg.header.stamp,
                                 "camera_init", "body_hf"));
+
+        rate.sleep();
     }
 }
 
@@ -853,8 +862,14 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
 {
     RateType rate(odom_imu_frequency);
+    static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf =
+        std::make_shared<tf2_ros::TransformBroadcaster>(node_);
     while (rclcpp::ok()){
-        Pose pose = pbuffer.Pop();
+        Pose pose;
+        if (!pbuffer.TryPop(pose)) {
+            rate.sleep();
+            continue;
+        }
         OdomMsg msg;
         msg.header.stamp =
             rclcpp::Time(static_cast<uint64_t>(pose._timestamp * 1e9));
@@ -871,9 +886,6 @@ void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& p
         msg.pose.pose.orientation.w = pose._qw;
         pubOdomHighFreq->publish(msg);
 
-        static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf;
-        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
-
         geometry_msgs::msg::TransformStamped tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = "camera_init";
@@ -885,6 +897,8 @@ void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& p
         tf_msg.transform.rotation = msg.pose.pose.orientation;
 
         br_hf->sendTransform(tf_msg);
+
+        rate.sleep();
     }
 }
 #endif
@@ -1170,6 +1184,9 @@ int main(int argc, char** argv)
         nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
         nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
         nh.param<int>("publish/odom_imu_frequency", odom_imu_frequency, 100);
+        nh.param<bool>("zupt/use_zupt", use_zupt, false);
+        nh.param<double>("zupt/zupt_acc_norm_threshold", zupt_acc_norm_threshold, 0.1);
+        nh.param<double>("zupt/zupt_gyro_threshold", zupt_gyro_threshold, 0.01);
         path.header.stamp    = ros::Time::now();
         path.header.frame_id ="camera_init";
 
@@ -1216,6 +1233,9 @@ int main(int argc, char** argv)
         extrinT = node->declare_parameter<vector<double>>("mapping.extrinsic_T", vector<double>());
         extrinR = node->declare_parameter<vector<double>>("mapping.extrinsic_R", vector<double>());
         odom_imu_frequency = node->declare_parameter<int>("publish.odom_imu_frequency", 100);
+        bool use_zupt = node->declare_parameter<bool>("zupt.use_zupt", false);
+        double zupt_acc_norm_threshold = node->declare_parameter<double>("zupt.zupt_acc_norm_threshold", 0.1);
+        double zupt_gyro_threshold = node->declare_parameter<double>("zupt.zupt_gyro_threshold", 0.01);
         path.header.stamp = rclcpp::Clock().now(); 
         path.header.frame_id = "camera_init";
     #endif
@@ -1249,6 +1269,8 @@ int main(int argc, char** argv)
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu->set_use_zupt(use_zupt);
+    p_imu->set_zupt_thresholds(zupt_acc_norm_threshold, zupt_gyro_threshold);
     p_imu->lidar_type = lidar_type;
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);

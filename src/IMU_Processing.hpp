@@ -69,6 +69,9 @@ class ImuProcess
   void set_acc_cov(const V3D &scaler);
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
+  void set_use_zupt(bool enabled);
+  void set_zupt_thresholds(double acc_norm_threshold, double gyro_threshold);
+
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
 
@@ -88,6 +91,11 @@ class ImuProcess
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
   void UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_in_out);
+  void zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state);
+
+  bool use_zupt = false;
+  double zupt_acc_norm_threshold;
+  double zupt_gyro_threshold;
 
   PointCloudXYZI::Ptr cur_pcl_un_;
   ImuMsgConstPtr last_imu_;
@@ -179,6 +187,16 @@ void ImuProcess::set_acc_bias_cov(const V3D &b_a)
   cov_bias_acc = b_a;
 }
 
+void ImuProcess::set_use_zupt(bool enabled) { 
+  use_zupt = enabled; 
+}
+
+void ImuProcess::set_zupt_thresholds(double acc_norm_threshold, double gyro_threshold)
+{
+  zupt_acc_norm_threshold = acc_norm_threshold;
+  zupt_gyro_threshold = gyro_threshold;
+}
+
 void ImuProcess::PBufferPop(Pose &pose)
 {
   pose = pbuffer.Pop();
@@ -239,6 +257,33 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
   kf_state.change_P(init_P);
   last_imu_ = meas.imu.back();
 
+}
+
+void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state)
+{
+	const state_ikfom& s = kf_state.get_x();
+	esekfom::dyn_share_datastruct<double> ekfom_data;
+
+	ekfom_data.h_x = MatrixXd::Zero(3, state_ikfom::DOF);
+	ekfom_data.h.resize(3);
+	// ZUPT measurement model: vel = 0
+	ekfom_data.h_x.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
+	ekfom_data.h.block<3, 1>(0, 0) = -s.vel;
+	ekfom_data.R = MatrixXd::Identity(3, 3) * 1e-4;
+
+	auto P = kf_state.get_P();
+	const MatrixXd K = P * ekfom_data.h_x.transpose() * (ekfom_data.h_x * P * ekfom_data.h_x.transpose() + ekfom_data.R).inverse();
+	const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> I =
+		Matrix<double, state_ikfom::DOF, state_ikfom::DOF>::Identity();
+
+	state_ikfom x = kf_state.get_x();
+	x.boxplus(Matrix<double, state_ikfom::DOF, 1>(K * ekfom_data.h));
+	kf_state.change_x(x);
+
+	const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> KH = K * ekfom_data.h_x;
+	Matrix<double, state_ikfom::DOF, state_ikfom::DOF> P_new =
+		(I - KH) * P * (I - KH).transpose() + K * ekfom_data.R * K.transpose();
+	kf_state.change_P(P_new);
 }
 
 void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out)
@@ -331,6 +376,12 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
     kf_state.predict(dt, Q, in);
+    {
+      const bool is_static = std::fabs(in.acc.norm() - G_m_s2) < zupt_acc_norm_threshold && in.gyro.norm() < zupt_gyro_threshold;
+      if (use_zupt && is_static) {
+        zupt_update(kf_state);
+      }
+    }
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();
@@ -361,7 +412,11 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
-  
+  {
+    const bool is_static = std::fabs(in.acc.norm() - G_m_s2) < zupt_acc_norm_threshold && in.gyro.norm() < zupt_gyro_threshold;
+    if (use_zupt && is_static) zupt_update(kf_state);
+  }
+
   imu_state = kf_state.get_x();
   last_imu_ = meas.imu.back();
   last_lidar_end_time_ = pcl_end_time;
