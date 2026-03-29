@@ -1,4 +1,5 @@
 #include "utility.h"
+#include "ros_utils.h"
 
 using namespace std;
 
@@ -39,48 +40,41 @@ float mappingICPSize;
 
 int ikdtreeSearchNeighborNum;
 
-#ifdef USE_ROS1
-
-void read_liosam_params(ros::NodeHandle& nh) {
-    // LIO-SAM params
+void read_liosam_params() {
 
     // Topics
-    nh.param<std::string>("lio_sam/gpsTopic", gpsTopic, "odometry/gps");
+    rosparam_get("lio_sam/gpsTopic", gpsTopic, std::string("odometry/gps"));
 
     // GPS settings
-    nh.param<bool>("lio_sam/useImuHeadingInitialization", useImuHeadingInitialization, false);
-    nh.param<bool>("lio_sam/useGpsElevation", useGpsElevation, false);
-    nh.param<float>("lio_sam/gpsCovThreshold", gpsCovThreshold, 2.0);
-    nh.param<float>("lio_sam/poseCovThreshold", poseCovThreshold, 25.0);
+    rosparam_get("lio_sam/useImuHeadingInitialization", useImuHeadingInitialization, false);
+    rosparam_get("lio_sam/useGpsElevation", useGpsElevation, false);
+    rosparam_get("lio_sam/gpsCovThreshold", gpsCovThreshold, 2.0f);
+    rosparam_get("lio_sam/poseCovThreshold", poseCovThreshold, 25.0f);
 
     // CPU parameters
-    nh.param<int>("lio_sam/numberOfCores", numberOfCores, 2);
-    nh.param<double>("lio_sam/mappingProcessInterval", mappingProcessInterval, 0.15);
+    rosparam_get("lio_sam/numberOfCores", numberOfCores, 2);
+    rosparam_get("lio_sam/mappingProcessInterval", mappingProcessInterval, 0.15);
 
     // Keyframe Strategy
-    nh.param<float>("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0);
-    nh.param<float>("lio_sam/surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2);
-    nh.param<float>("lio_sam/surroundingKeyframeDensity", surroundingKeyframeDensity, 1.0);
-    nh.param<float>("lio_sam/surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0);
+    rosparam_get("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0f);
+    rosparam_get("lio_sam/surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2f);
+    rosparam_get("lio_sam/surroundingKeyframeDensity", surroundingKeyframeDensity, 1.0f);
+    rosparam_get("lio_sam/surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0f);
 
-    // Loop closeure parameters
-    nh.param<bool>("lio_sam/loopClosureEnableFlag", loopClosureEnableFlag, false);
-    nh.param<float>("lio_sam/loopClosureFrequency", loopClosureFrequency, 1.0);
-    nh.param<int>("lio_sam/surroundingKeyframeSize", surroundingKeyframeSize, 50);
-    nh.param<float>("lio_sam/historyKeyframeSearchRadius", historyKeyframeSearchRadius, 10.0);
-    nh.param<float>("lio_sam/historyKeyframeSearchTimeDiff", historyKeyframeSearchTimeDiff, 30.0);
-    nh.param<int>("lio_sam/historyKeyframeSearchNum", historyKeyframeSearchNum, 25);
-    nh.param<float>("lio_sam/historyKeyframeFitnessScore", historyKeyframeFitnessScore, 0.3);
+    // Loop closure parameters
+    rosparam_get("lio_sam/loopClosureEnableFlag", loopClosureEnableFlag, false);
+    rosparam_get("lio_sam/loopClosureFrequency", loopClosureFrequency, 1.0f);
+    rosparam_get("lio_sam/surroundingKeyframeSize", surroundingKeyframeSize, 50);
+    rosparam_get("lio_sam/historyKeyframeSearchRadius", historyKeyframeSearchRadius, 10.0f);
+    rosparam_get("lio_sam/historyKeyframeSearchTimeDiff", historyKeyframeSearchTimeDiff, 30.0f);
+    rosparam_get("lio_sam/historyKeyframeSearchNum", historyKeyframeSearchNum, 25);
+    rosparam_get("lio_sam/historyKeyframeFitnessScore", historyKeyframeFitnessScore, 0.3f);
 
     // Global pointcloud visualization
-    nh.param<float>("lio_sam/globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius, 1e3);
-    nh.param<float>("lio_sam/globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity, 10.0);
-    nh.param<float>("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
+    rosparam_get("lio_sam/globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius, 1e3f);
+    rosparam_get("lio_sam/globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity, 10.0f);
+    rosparam_get("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0f);
 
-    nh.param<float>("lio_sam/mappingICPSize", mappingICPSize, 0.2);
-    nh.param<int>("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
+    rosparam_get("lio_sam/mappingICPSize", mappingICPSize, 0.2f);
+    rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
 }
-
-#elif defined(USE_ROS2)
-
-#endif

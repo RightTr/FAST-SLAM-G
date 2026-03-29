@@ -32,24 +32,6 @@
 
 #include "ikdtree_public.hpp"
 
-#ifdef USE_ROS1
-#include <ros/ros.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <geometry_msgs/Vector3.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <std_msgs/Float64MultiArray.h>
-
-#elif defined(USE_ROS2)
-#include <rclcpp/rclcpp.hpp>
-#endif
-
 using namespace gtsam;
 using namespace std;
 
@@ -90,25 +72,23 @@ ISAM2 *isam;
 Values isamCurrentEstimate;
 Eigen::MatrixXd poseCovariance;
 
-ros::Publisher pubKeyPoses;
-ros::Publisher pubPath;
+Pcl2Publisher pubKeyPoses;
+PathPublisher pubPath;
 
-ros::Publisher pubLaserCloudGlobal;
-ros::Publisher pubLaserCloudLocal;
+Pcl2Publisher pubLaserCloudGlobal;
+Pcl2Publisher pubLaserCloudLocal;
 
-ros::Publisher pubHistoryKeyFrames;
-ros::Publisher pubIcpKeyFrames;
-ros::Publisher pubRecentKeyFrame;
-ros::Publisher pubCloudRegisteredRaw;
-ros::Publisher pubLoopConstraintEdge;
+Pcl2Publisher pubHistoryKeyFrames;
+Pcl2Publisher pubIcpKeyFrames;
+Pcl2Publisher pubRecentKeyFrame;
+Pcl2Publisher pubCloudRegisteredRaw;
+MarkerArrayPublisher pubLoopConstraintEdge;
 
-ros::Subscriber subGPS;
+OdomSubscriber subGPS;
 
-ros::ServiceServer srvSaveMap;
+TimeType timeLaserInfoStamp;
 
-ros::Time timeLaserInfoStamp;
-
-std::deque<nav_msgs::Odometry> gpsQueue;
+std::deque<OdometryMsg> gpsQueue;
 
 pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D; // Store keyframe poses and indexes 
 pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -123,7 +103,7 @@ Eigen::Matrix3d rotationLidarToIMU;
 
 bool isDegenerate = false;
 
-nav_msgs::Path globalPath;
+PathMsg globalPath;
 
 std::mutex mtx;
 std::mutex mtxLoopInfo;
@@ -214,7 +194,7 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::
     return cloudOut;
 }
 
-void gpsHandler(const nav_msgs::Odometry::ConstPtr& gpsMsg)
+void gpsHandler(const OdometryMsgConstPtr& gpsMsg)
 {
     gpsQueue.push_back(*gpsMsg);
 }
@@ -240,20 +220,14 @@ void MapOptimizationInit()
     parameters.relinearizeSkip = 1;
     isam = new ISAM2(parameters);
 
-    #ifdef USE_ROS1
-    ros::NodeHandle nh;
-    pubKeyPoses = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/trajectory", 1);
-    pubPath = nh.advertise<nav_msgs::Path>("lio_sam/mapping/path", 1);
-    pubLaserCloudGlobal = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/cloud_global", 1);
-
-    pubRecentKeyFrame = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/cloud_recent_keyframe", 1);
-
-    pubLoopConstraintEdge = nh.advertise<visualization_msgs::MarkerArray>("lio_sam/loop_closure_constraints", 1);
-    subGPS = nh.subscribe<nav_msgs::Odometry> (gpsTopic, 200, gpsHandler, ros::TransportHints().tcpNoDelay());
+    init_ros_node();
     
-    #elif defined(USE_ROS2)
-    auto node = rclcpp::Node::make_shared("lio_sam");
-    #endif
+    pubKeyPoses = create_publisher<PointCloud2Msg>("lio_sam/trajectory", 1);
+    pubPath = create_publisher<PathMsg>("lio_sam/mapping/path", 1);
+    pubLaserCloudGlobal = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global", 1);
+    pubRecentKeyFrame = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_recent_keyframe", 1);
+    pubLoopConstraintEdge = create_publisher<MarkerArrayMsg>("lio_sam/loop_closure_constraints", 1);
+    subGPS = create_subscriber<OdometryMsg>(gpsTopic, 200, gpsHandler);
 
     downSizeFilterICP.setLeafSize(mappingICPSize, mappingICPSize, mappingICPSize);
 
@@ -462,19 +436,19 @@ void addGPSFactor()
 
         while (!gpsQueue.empty())
         {
-            if (gpsQueue.front().header.stamp.toSec() < timeLaserInfoCur - 0.2)
+            if (get_ros_time_sec(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2)
             {
                 // message too old
                 gpsQueue.pop_front();
             }
-            else if (gpsQueue.front().header.stamp.toSec() > timeLaserInfoCur + 0.2)
+            else if (get_ros_time_sec(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2)
             {
                 // message too new
                 break;
             }
             else
             {
-                nav_msgs::Odometry thisGPS = gpsQueue.front();
+                OdometryMsg thisGPS = gpsQueue.front();
                 gpsQueue.pop_front();
 
                 // GPS too noisy, skip
@@ -638,17 +612,13 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
 
 void updatePath(const PointTypePose& pose_in)
 {
-    geometry_msgs::PoseStamped pose_stamped;
-    pose_stamped.header.stamp = ros::Time().fromSec(pose_in.time);
+    PoseStampedMsg pose_stamped;
+    pose_stamped.header.stamp = get_ros_time(pose_in.time);
     pose_stamped.header.frame_id = "camera_init";
     pose_stamped.pose.position.x = pose_in.x;
     pose_stamped.pose.position.y = pose_in.y;
     pose_stamped.pose.position.z = pose_in.z;
-    tf::Quaternion q = tf::createQuaternionFromRPY(pose_in.roll, pose_in.pitch, pose_in.yaw);
-    pose_stamped.pose.orientation.x = q.x();
-    pose_stamped.pose.orientation.y = q.y();
-    pose_stamped.pose.orientation.z = q.z();
-    pose_stamped.pose.orientation.w = q.w();
+    pose_stamped.pose.orientation = quaternion_from_rpy(pose_in.roll, pose_in.pitch, pose_in.yaw);
 
     globalPath.poses.push_back(pose_stamped);
 }
@@ -710,14 +680,14 @@ void publishSamMsg()
         return;
     // publish key poses
     publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, "camera_init");
-    if (pubPath.getNumSubscribers() != 0)
+    if (ros_subscription_count(pubPath) != 0)
     {
         globalPath.header.stamp = timeLaserInfoStamp;
         globalPath.header.frame_id = "camera_init";
-        pubPath.publish(globalPath);
+        ros_publish(pubPath, globalPath);
     }
 
-    if (pubRecentKeyFrame.getNumSubscribers() != 0)
+    if (ros_subscription_count(pubRecentKeyFrame) != 0)
     {
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
         PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
@@ -731,13 +701,13 @@ void visualizeLoopClosure()
     if (loopIndexContainer.empty())
         return;
     
-    visualization_msgs::MarkerArray markerArray;
+    MarkerArrayMsg markerArray;
     // loop nodes
-    visualization_msgs::Marker markerNode;
+    MarkerMsg markerNode;
     markerNode.header.frame_id = "camera_init";
     markerNode.header.stamp = timeLaserInfoStamp;
-    markerNode.action = visualization_msgs::Marker::ADD;
-    markerNode.type = visualization_msgs::Marker::SPHERE_LIST;
+    markerNode.action = MarkerMsg::ADD;
+    markerNode.type = MarkerMsg::SPHERE_LIST;
     markerNode.ns = "loop_nodes";
     markerNode.id = 0;
     markerNode.pose.orientation.w = 1;
@@ -745,11 +715,11 @@ void visualizeLoopClosure()
     markerNode.color.r = 0; markerNode.color.g = 0.8; markerNode.color.b = 1;
     markerNode.color.a = 1;
     // loop edges
-    visualization_msgs::Marker markerEdge;
+    MarkerMsg markerEdge;
     markerEdge.header.frame_id = "camera_init";
     markerEdge.header.stamp = timeLaserInfoStamp;
-    markerEdge.action = visualization_msgs::Marker::ADD;
-    markerEdge.type = visualization_msgs::Marker::LINE_LIST;
+    markerEdge.action = MarkerMsg::ADD;
+    markerEdge.type = MarkerMsg::LINE_LIST;
     markerEdge.ns = "loop_edges";
     markerEdge.id = 1;
     markerEdge.pose.orientation.w = 1;
@@ -761,7 +731,7 @@ void visualizeLoopClosure()
     {
         int key_cur = it->first;
         int key_pre = it->second;
-        geometry_msgs::Point p;
+        PointMsg p;
         p.x = copy_cloudKeyPoses6D->points[key_cur].x;
         p.y = copy_cloudKeyPoses6D->points[key_cur].y;
         p.z = copy_cloudKeyPoses6D->points[key_cur].z;
@@ -776,7 +746,7 @@ void visualizeLoopClosure()
 
     markerArray.markers.push_back(markerNode);
     markerArray.markers.push_back(markerEdge);
-    pubLoopConstraintEdge.publish(markerArray);
+    ros_publish(pubLoopConstraintEdge, markerArray);
 }
 
 void loopClosureThread()
@@ -786,8 +756,8 @@ void loopClosureThread()
 
     ROS_PRINT_INFO("...... Loop Closure Thread Start......");
 
-    ros::Rate rate(loopClosureFrequency);
-    while (ros::ok())
+    RateType rate(loopClosureFrequency);
+    while (ros_ok())
     {
         rate.sleep();
         performLoopClosure();
@@ -796,7 +766,7 @@ void loopClosureThread()
 }
 
 void publishGlobalMap() {
-    if (pubLaserCloudGlobal.getNumSubscribers() == 0)
+    if (ros_subscription_count(pubLaserCloudGlobal) == 0)
         return;
 
     if (cloudKeyPoses3D->points.empty())
@@ -845,8 +815,8 @@ void publishGlobalMap() {
 
 void visualizeGlobalMapThread()
 {
-    ros::Rate rate(0.2);
-    while (ros::ok()){
+    RateType rate(0.2);
+    while (ros_ok()){
         rate.sleep();
         publishGlobalMap();
     }

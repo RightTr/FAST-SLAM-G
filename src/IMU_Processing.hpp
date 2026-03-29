@@ -22,30 +22,6 @@
 #include "preprocess.h"
 #include "posebuffer.h"
 
-#ifdef USE_ROS1
-#include <ros/ros.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <geometry_msgs/Vector3.h>
-#include <tf/transform_broadcaster.h>
-#include <eigen_conversions/eigen_msg.h>
-#include <nav_msgs/Odometry.h>
-#elif defined(USE_ROS2)
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/imu.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_eigen/tf2_eigen.hpp>
-#include <nav_msgs/msg/odometry.hpp>
-#endif
-
-#ifdef USE_ROS1
-using ImuMsg = sensor_msgs::Imu;
-#elif defined(USE_ROS2)
-using ImuMsg = sensor_msgs::msg::Imu;
-#endif
-
 /// *************Preconfiguration
 
 #define MAX_INI_COUNT (10)

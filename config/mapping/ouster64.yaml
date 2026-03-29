@@ -37,5 +37,5 @@ pcd_save:
 
 zupt:
     use_zupt: false              # enable zero velocity update
-    zupt_acc_norm_threshold: 0.1 # (m/s²) acceleration norm threshold for ZUPT
-    zupt_gyro_threshold: 0.01    # (rad/s) gyroscope threshold for ZUPT
+    zupt_acc_norm_threshold: 0.30 # (m/s²) acceleration norm threshold for ZUPT
+    zupt_gyro_threshold: 0.05    # (rad/s) gyroscope threshold for ZUPT

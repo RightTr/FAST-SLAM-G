@@ -5,35 +5,7 @@
 #include <Eigen/Eigen>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-
-
-#ifdef USE_ROS1
-#include <fast_lio_sam/Pose6D.h>
-#include <sensor_msgs/Imu.h>
-#include <nav_msgs/Odometry.h>
-#include <tf/transform_broadcaster.h>
-#include <eigen_conversions/eigen_msg.h>
-#elif defined(USE_ROS2)
-#include <fast_lio_interfaces/msg/pose6_d.hpp>
-#include <sensor_msgs/msg/imu.hpp>
-#include <nav_msgs/msg/odometry.hpp>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_eigen/tf2_eigen.hpp>
-#endif
-
-#ifdef USE_ROS1
-using TimeType = ros::Time;
-using OdomMsg = nav_msgs::Odometry;
-using RateType = ros::Rate;
-using Pose6D = fast_lio_sam::Pose6D;
-using ImuMsgConstPtr = sensor_msgs::Imu::ConstPtr;
-#elif defined(USE_ROS2)
-using TimeType = rclcpp::Time;
-using OdomMsg = nav_msgs::msg::Odometry;
-using RateType = rclcpp::Rate;
-using Pose6D = fast_lio_interfaces::msg::Pose6D;
-using ImuMsgConstPtr = sensor_msgs::msg::Imu::ConstPtr;
-#endif
+#include "ros_utils.h"
 
 using namespace std;
 using namespace Eigen;

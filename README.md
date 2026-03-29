@@ -6,11 +6,13 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 
 * A SLAM system that integrates FAST-LIO2 with a LIO-SAM-style factor graph backend.
 
-* ROS2 adaptation
+* ROS1 and ROS2 adaptation
 
 * High-frequency odometry via IMU propagation between LiDAR scans
 
 * Manual initial pose setting for relocalization
+
+* ZUPT detection and handling
 
 * Support for RoboSense series LiDARs, Unilidar series LiDARs
 
@@ -25,25 +27,16 @@ cd fastlio_sam_ws
 mkdir src && cd src
 git clone https://github.com/RightTr/FAST-LIO-SAM.git
 
+# Clone the FAST-LIO interfaces package for ROS1
+git clone https://github.com/RightTr/fast_lio_interfaces.git
+
 cd src/FAST-LIO-SAM
 git submodule update --init --recursive
 
+# ROS1 build
 ./build.sh ROS1
-```
 
-### ROS2 Build
-
-```bash
-mkdir fastlio_ws
-cd fastlio_ws
-
-mkdir src && cd src
-git clone https://github.com/RightTr/FAST_LIO.git
-git clone https://github.com/RightTr/fast_lio_interfaces.git
-
-cd src/FAST-LIO
-git submodule update --init --recursive
-
+# ROS2 build
 ./build.sh humble
 ```
 
@@ -79,7 +72,18 @@ ros2 launch fast_lio_sam reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
-### High Frequency Odometry via IMU propagation between LiDAR scans
+## ZUPT Detection and Handling
+
+Check the related parameters in the .yaml files.
+
+```yaml
+zupt:
+    use_zupt: false              # enable zero velocity update
+    zupt_acc_norm_threshold: 0.30 # (m/s²) acceleration norm threshold for ZUPT
+    zupt_gyro_threshold: 0.05    # (rad/s) gyroscope threshold for ZUPT
+```
+
+### High frequency odometry via IMU propagation between LiDAR scans
 
 Subscribe the topic */OdometryHighFreq* to receive high frequency odometry output via IMU propagation between LiDAR scans.
 
@@ -94,7 +98,8 @@ roslaunch fast_lio_sam mapping_airy.launch
 
 ## 📝 TODO List
 
-- [ ] ROS2 fully Adaption
+- [x] Full ROS2 adaptation
+- [ ] ROS2 Adaptation Test
 
 ## 📚 Related Works
 
