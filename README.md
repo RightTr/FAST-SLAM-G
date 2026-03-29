@@ -112,6 +112,7 @@ roslaunch fast_lio_sam mapping_airy.launch
 - [x] Full ROS2 adaptation
 - [ ] ROS2 Adaptation Test
 - [ ] GNSS integration
+- [ ] Is fast_lio_interfaces necessary？
 
 ## 📚 Related Works
 
