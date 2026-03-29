@@ -25,7 +25,10 @@ class PoseBuffer
         void Push(const Pose &pose)
         {
             std::unique_lock<std::mutex> lock(mtx_);
-            cond_full_.wait(lock, [this]() { return !queue_.IsFull(); });
+            if (queue_.IsFull()) {
+                // Keep the newest poses to avoid blocking producer threads.
+                queue_.Pop();
+            }
 
             queue_.Push(pose);
 

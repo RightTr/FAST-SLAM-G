@@ -246,7 +246,7 @@ void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_st
 	// ZUPT measurement model: vel = 0
 	ekfom_data.h_x.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
 	ekfom_data.h.block<3, 1>(0, 0) = -s.vel;
-	ekfom_data.R = MatrixXd::Identity(3, 3) * 1e-4;
+	ekfom_data.R = MatrixXd::Identity(3, 3) * 1e-5;
 
 	auto P = kf_state.get_P();
 	const MatrixXd K = P * ekfom_data.h_x.transpose() * (ekfom_data.h_x * P * ekfom_data.h_x.transpose() + ekfom_data.R).inverse();
