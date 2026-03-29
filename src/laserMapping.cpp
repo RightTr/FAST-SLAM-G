@@ -67,8 +67,9 @@ bool imu_flip = false;
 int lidar_type;
 int odom_imu_frequency;
 bool use_zupt = false;
-double zupt_acc_norm_threshold;
-double zupt_gyro_threshold;
+double zupt_acc_var_threshold;
+double zupt_gyro_var_threshold;
+bool static_skip_update = true;
 
 const M3D IMU_FLIP_R = (M3D() <<
     1.0,  0.0,  0.0,
@@ -941,8 +942,9 @@ int main(int argc, char** argv)
     rosparam_get("mapping/extrinsic_R", extrinR, std::vector<double>());
     rosparam_get("publish/odom_imu_frequency", odom_imu_frequency, 100);
     rosparam_get("zupt/use_zupt", use_zupt, false);
-    rosparam_get("zupt/zupt_acc_norm_threshold", zupt_acc_norm_threshold, 0.1);
-    rosparam_get("zupt/zupt_gyro_threshold", zupt_gyro_threshold, 0.01);
+    rosparam_get("zupt/zupt_acc_var_threshold", zupt_acc_var_threshold, 0.001);
+    rosparam_get("zupt/zupt_gyro_var_threshold", zupt_gyro_var_threshold, 0.0001);
+    rosparam_get("zupt/static_skip_update", static_skip_update, true);
 
     path.header.stamp = get_ros_now();
     path.header.frame_id = "camera_init";
@@ -987,7 +989,7 @@ int main(int argc, char** argv)
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
     p_imu->set_use_zupt(use_zupt);
-    p_imu->set_zupt_thresholds(zupt_acc_norm_threshold, zupt_gyro_threshold);
+    p_imu->set_zupt_thresholds(zupt_acc_var_threshold, zupt_gyro_var_threshold);
     p_imu->lidar_type = lidar_type;
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
@@ -1139,13 +1141,29 @@ int main(int argc, char** argv)
             }
             int featsFromMapNum = ikdtree.validnum();
             kdtree_size_st = ikdtree.size();
-            
-            // cout<<"[ mapping ]: In num: "<<feats_undistort->points.size()<<" downsamp "<<feats_down_size<<" Map num: "<<featsFromMapNum<<"effect num:"<<effct_feat_num<<endl;
 
             /*** ICP and iterated Kalman filter update ***/
             if (feats_down_size < 5)
             {
                 ROS_PRINT_WARN("No point, skip this scan!");
+                continue;
+            }
+
+            const bool is_static_now = use_zupt && p_imu->is_static_window(Measures);
+            
+            if (is_static_now && static_skip_update)
+            {
+                euler_cur = SO3ToEuler(state_point.rot);
+                pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+                geoQuat.x = state_point.rot.coeffs()[0];
+                geoQuat.y = state_point.rot.coeffs()[1];
+                geoQuat.z = state_point.rot.coeffs()[2];
+                geoQuat.w = state_point.rot.coeffs()[3];
+
+                if (path_en)                         publish_path(pubPath);
+                if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
+                if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
+                if (feature_pub_en)                  publish_map(pubLaserCloudMap);
                 continue;
             }
             

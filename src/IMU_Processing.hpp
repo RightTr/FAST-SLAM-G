@@ -49,6 +49,8 @@ class ImuProcess
   void set_use_zupt(bool enabled);
   void set_zupt_thresholds(double acc_norm_threshold, double gyro_threshold);
 
+  bool is_static_window(const MeasureGroup &meas) const;
+
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
 
@@ -71,8 +73,8 @@ class ImuProcess
   void zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state);
 
   bool use_zupt = false;
-  double zupt_acc_norm_threshold;
-  double zupt_gyro_threshold;
+  double zupt_acc_var_threshold;
+  double zupt_gyro_var_threshold;
 
   PointCloudXYZI::Ptr cur_pcl_un_;
   ImuMsgConstPtr last_imu_;
@@ -168,10 +170,57 @@ void ImuProcess::set_use_zupt(bool enabled) {
   use_zupt = enabled; 
 }
 
-void ImuProcess::set_zupt_thresholds(double acc_norm_threshold, double gyro_threshold)
+void ImuProcess::set_zupt_thresholds(double acc_var_threshold, double gyro_var_threshold)
 {
-  zupt_acc_norm_threshold = acc_norm_threshold;
-  zupt_gyro_threshold = gyro_threshold;
+  zupt_acc_var_threshold = acc_var_threshold;
+  zupt_gyro_var_threshold = gyro_var_threshold;
+}
+
+bool ImuProcess::is_static_window(const MeasureGroup &meas) const
+{
+  if (meas.imu.empty()) return false;
+
+  // Calculate mean
+  V3D acc_sum = Zero3d;
+  V3D gyro_sum = Zero3d;
+  for (const auto &imu : meas.imu)
+  {
+    acc_sum += V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
+    gyro_sum += V3D(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
+  }
+
+  const double inv_n = 1.0 / static_cast<double>(meas.imu.size());
+  const V3D acc_mean = acc_sum * inv_n;
+  const V3D gyro_mean = gyro_sum * inv_n;
+
+  // Calculate variance
+  V3D acc_var = Zero3d;
+  V3D gyro_var = Zero3d;
+  for (const auto &imu : meas.imu)
+  {
+    V3D acc_diff = V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z) - acc_mean;
+    V3D gyro_diff = V3D(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z) - gyro_mean;
+    acc_var += acc_diff.cwiseProduct(acc_diff);
+    gyro_var += gyro_diff.cwiseProduct(gyro_diff);
+  }
+  acc_var *= inv_n;
+  gyro_var *= inv_n;
+
+  // Check if all variances are below thresholds
+  bool is_static = true;
+  for (int i = 0; i < 3; i++)
+  {
+    if (acc_var[i] > zupt_acc_var_threshold || gyro_var[i] > zupt_gyro_var_threshold)
+    {
+      is_static = false;
+      break;
+    }
+  }
+
+  // printf("Acc Var: [%.6f, %.6f, %.6f], Acc Mean: [%.6f, %.6f, %.6f], Gyro Var: [%.6f, %.6f, %.6f], Static: %d\n",
+  //        acc_var[0], acc_var[1], acc_var[2], acc_mean.x(), acc_mean.y(), acc_mean.z(), gyro_var[0], gyro_var[1], gyro_var[2], is_static);
+
+  return is_static;
 }
 
 void ImuProcess::PBufferPop(Pose &pose)
@@ -265,6 +314,9 @@ void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_st
 
 void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out)
 {
+  /*** Judge static state for whole LiDAR frame (window-based variance check) ***/
+  const bool is_frame_static = use_zupt ? is_static_window(meas) : false;
+
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
@@ -335,8 +387,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
     kf_state.predict(dt, Q, in);
     {
-      const bool is_static = std::fabs(in.acc.norm() - G_m_s2) < zupt_acc_norm_threshold && in.gyro.norm() < zupt_gyro_threshold;
-      if (use_zupt && is_static) {
+      if (is_frame_static) {
         zupt_update(kf_state);
       }
     }
@@ -361,8 +412,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
   {
-    const bool is_static = std::fabs(in.acc.norm() - G_m_s2) < zupt_acc_norm_threshold && in.gyro.norm() < zupt_gyro_threshold;
-    if (use_zupt && is_static) zupt_update(kf_state);
+    if (is_frame_static) zupt_update(kf_state);
   }
 
   imu_state = kf_state.get_x();

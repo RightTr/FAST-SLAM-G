@@ -18,10 +18,11 @@ mapping:
     fov_degree:    360.0
     det_range:     100.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
-    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
-    extrinsic_R: [ 1., 0., 0.,
-                    0., 1., 0.,
-                    0., 0., 1.]
+    extrinsic_R: [0.999996, -0.00129,  -0.00230,
+              0.00129,   0.999999, -0.00130,
+              0.00230,   0.00130,   0.999996]
+
+    extrinsic_T: [-0.009673, -0.037003, 0.047590]
 
 publish:
     path_en:  false
@@ -36,5 +37,6 @@ pcd_save:
 
 zupt:
     use_zupt: true              # enable zero velocity update
-    zupt_acc_norm_threshold: 0.1 # (m/s²) acceleration norm threshold for ZUPT
-    zupt_gyro_threshold: 0.05    # (rad/s) gyroscope threshold for ZUPT
+    zupt_acc_var_threshold: 0.0001   # (m/s²)² acceleration variance threshold for ZUPT
+    zupt_gyro_var_threshold: 0.00001 # (rad/s)² gyroscope variance threshold for ZUPT
+    static_skip_update: true     # when static, skip LiDAR update directly
