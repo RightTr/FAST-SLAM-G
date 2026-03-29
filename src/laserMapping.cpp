@@ -70,6 +70,11 @@ bool use_zupt = false;
 double zupt_acc_norm_threshold;
 double zupt_gyro_threshold;
 
+const M3D IMU_FLIP_R = (M3D() <<
+    1.0,  0.0,  0.0,
+    0.0, -1.0,  0.0,
+    0.0,  0.0, -1.0).finished();
+
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
 vector<PointVector>  Nearest_Points; 
@@ -323,12 +328,18 @@ void imu_cbk(const ImuMsgConstPtr &msg_in)
 
     if (imu_flip)
     {
-        msg->angular_velocity.x = -msg->angular_velocity.x;
-        msg->angular_velocity.y = -msg->angular_velocity.y;
-        msg->angular_velocity.z = -msg->angular_velocity.z;
-        msg->linear_acceleration.x = -msg->linear_acceleration.x;
-        msg->linear_acceleration.y = -msg->linear_acceleration.y;
-        msg->linear_acceleration.z = -msg->linear_acceleration.z;
+        // Use a proper rotation (det=+1) instead of a reflection.
+        const V3D gyr_raw(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z);
+        const V3D acc_raw(msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z);
+        const V3D gyr_flip = IMU_FLIP_R * gyr_raw;
+        const V3D acc_flip = IMU_FLIP_R * acc_raw;
+
+        msg->angular_velocity.x = gyr_flip.x();
+        msg->angular_velocity.y = gyr_flip.y();
+        msg->angular_velocity.z = gyr_flip.z();
+        msg->linear_acceleration.x = acc_flip.x();
+        msg->linear_acceleration.y = acc_flip.y();
+        msg->linear_acceleration.z = acc_flip.z();
     }
 
     const double msg_in_stamp_sec = get_ros_time_sec(msg_in->header.stamp);
@@ -966,10 +977,9 @@ int main(int argc, char** argv)
     Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
     if (imu_flip)
     {
-        // IMU frame inversion: coordinates in IMU frame should be transformed consistently.
-        Lidar_T_wrt_IMU = -Lidar_T_wrt_IMU;
-        Lidar_R_wrt_IMU = -Lidar_R_wrt_IMU;
-        ROS_PRINT_WARN("common/imu_flip is ON: IMU measurements and LiDAR-IMU extrinsics are inverted.");
+        // Apply the same proper IMU frame rotation to both measurements and extrinsics.
+        Lidar_T_wrt_IMU = IMU_FLIP_R * Lidar_T_wrt_IMU;
+        Lidar_R_wrt_IMU = IMU_FLIP_R * Lidar_R_wrt_IMU;
     }
     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
     p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
