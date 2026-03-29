@@ -18,6 +18,15 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 
 ## 🛠️ Prerequisites
 
+### Dependency
+
+* [gtsam](https://gtsam.org/get_started/) (Georgia Tech Smoothing and Mapping library)
+
+```bash
+sudo add-apt-repository ppa:borglab/gtsam-release-4.0
+sudo apt install libgtsam-dev libgtsam-unstable-dev
+```
+
 ### ROS1 Build
 
 ```bash
