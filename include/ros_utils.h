@@ -53,6 +53,7 @@ using ImuMsgPtr = sensor_msgs::Imu::Ptr;
 using LivoxCustomMsgConstPtr = livox_ros_driver2::CustomMsg::ConstPtr;
 using LivoxCustomMsg = livox_ros_driver2::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::PointCloud2::ConstPtr;
+using LivoxMsg = PointCloud2Msg;  // ROS1 Livox driver outputs PointCloud2
 
 #elif defined(USE_ROS2)
 #include <rclcpp/rclcpp.hpp>
@@ -103,6 +104,7 @@ using ImuMsgPtr = sensor_msgs::msg::Imu::Ptr;
 using LivoxCustomMsgConstPtr = livox_ros_driver2::msg::CustomMsg::ConstPtr;
 using LivoxCustomMsg = livox_ros_driver2::msg::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::msg::PointCloud2::ConstPtr;
+using LivoxMsg = livox_ros_driver2::msg::CustomMsg;  // ROS2 Livox driver outputs CustomMsg
 
 #endif
 
@@ -270,6 +272,14 @@ inline ros::Subscriber create_subscriber(const std::string& topic, uint32_t queu
 template<typename T>
 inline ros::Publisher create_publisher(const std::string& topic, uint32_t queue_size) {
     return g_ros_nh->advertise<T>(topic, queue_size);
+}
+
+// Publisher creation for ROS1 with QoS (ignores QoS parameter, ROS1 has no QoS support)
+template<typename T, typename QosType>
+inline ros::Publisher create_publisher_qos(const std::string& topic, const QosType& qos) {
+    // ROS1 doesn't support QoS, so we ignore the qos parameter
+    // and use a default queue size of 50 for critical topics like odometry
+    return g_ros_nh->advertise<T>(topic, 50);
 }
 
 #elif defined(USE_ROS2)

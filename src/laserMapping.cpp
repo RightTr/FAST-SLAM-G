@@ -606,16 +606,13 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
     ros_publish(pubLaserCloudMap, laserCloudMap);
 }
 
-#ifdef USE_ROS1
 void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
 {
     RateType rate(odom_imu_frequency);
-    while (ros::ok()){
+    while (ros_ok()){
         Pose pose = pbuffer.Pop();
         OdomMsg msg;
-
         msg.header.stamp = get_ros_time(pose._timestamp);
-
         msg.header.frame_id = "camera_init";
         msg.child_frame_id = "body";
 
@@ -626,68 +623,40 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         msg.pose.pose.orientation.y = pose._qy;
         msg.pose.pose.orientation.z = pose._qz;
         msg.pose.pose.orientation.w = pose._qw;
-
         ros_publish(pubOdomHighFreq, msg);
 
+#ifdef USE_ROS1
         static tf::TransformBroadcaster br_hf;
         tf::Transform transform;
         tf::Quaternion q;
-
         transform.setOrigin(tf::Vector3(
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
             msg.pose.pose.position.z));
-
         q.setW(msg.pose.pose.orientation.w);
         q.setX(msg.pose.pose.orientation.x);
         q.setY(msg.pose.pose.orientation.y);
         q.setZ(msg.pose.pose.orientation.z);
-
         transform.setRotation(q);
         br_hf.sendTransform(
             tf::StampedTransform(transform, msg.header.stamp,
                                 "camera_init", "body_hf"));
-    }
-}
-
 #elif defined(USE_ROS2)
-void publish_odometryhighfreq(const rclcpp::Node::SharedPtr node_, PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
-{
-    RateType rate(odom_imu_frequency);
-    while (rclcpp::ok()){
-        Pose pose = pbuffer.Pop();
-        OdomMsg msg;
-        msg.header.stamp = get_ros_time(pose._timestamp);
-
-        msg.header.frame_id = "camera_init";
-        msg.child_frame_id = "body";
-
-        msg.pose.pose.position.x = pose._x;
-        msg.pose.pose.position.y = pose._y;
-        msg.pose.pose.position.z = pose._z;
-        msg.pose.pose.orientation.x = pose._qx;
-        msg.pose.pose.orientation.y = pose._qy;
-        msg.pose.pose.orientation.z = pose._qz;
-        msg.pose.pose.orientation.w = pose._qw;
-        ros_publish(pubOdomHighFreq, msg);
-
+        init_ros_node();
         static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf;
-        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
-
+        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(g_ros_node);
         geometry_msgs::msg::TransformStamped tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = "camera_init";
         tf_msg.child_frame_id = "body_hf";
-
         tf_msg.transform.translation.x = msg.pose.pose.position.x;
         tf_msg.transform.translation.y = msg.pose.pose.position.y;
         tf_msg.transform.translation.z = msg.pose.pose.position.z;
         tf_msg.transform.rotation = msg.pose.pose.orientation;
-
         br_hf->sendTransform(tf_msg);
+#endif
     }
 }
-#endif
 
 template<typename T>
 void set_posestamp(T & out)
@@ -702,7 +671,6 @@ void set_posestamp(T & out)
     
 }
 
-#ifdef USE_ROS1
 void publish_odometry(const OdomPublisher & pubOdomAftMapped)
 {
     odomAftMapped.header.frame_id = "camera_init";
@@ -722,6 +690,8 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
         odomAftMapped.pose.covariance[i*6 + 4] = P(k, 1);
         odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
     }
+
+#ifdef USE_ROS1
     static tf::TransformBroadcaster br;
     tf::Transform                   transform;
     tf::Quaternion                  q;
@@ -734,30 +704,10 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
     q.setZ(odomAftMapped.pose.pose.orientation.z);
     transform.setRotation( q );
     br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
-}
-
 #elif defined(USE_ROS2)
-void publish_odometry(const rclcpp::Node::SharedPtr node_, const OdomPublisher & pubOdomAftMapped)
-{
-    odomAftMapped.header.frame_id = "camera_init";
-    odomAftMapped.child_frame_id = "body";
-    set_posestamp(odomAftMapped.pose);
-    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
-    ros_publish(pubOdomAftMapped, odomAftMapped);
-
-    auto P = kf.get_P();
-    for (int i = 0; i < 6; i ++)
-    {
-        int k = i < 3 ? i + 3 : i - 3;
-        odomAftMapped.pose.covariance[i*6 + 0] = P(k, 3);
-        odomAftMapped.pose.covariance[i*6 + 1] = P(k, 4);
-        odomAftMapped.pose.covariance[i*6 + 2] = P(k, 5);
-        odomAftMapped.pose.covariance[i*6 + 3] = P(k, 0);
-        odomAftMapped.pose.covariance[i*6 + 4] = P(k, 1);
-        odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
-    }
+    init_ros_node();
     static std::shared_ptr<tf2_ros::TransformBroadcaster> br;
-    br = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
+    br = std::make_shared<tf2_ros::TransformBroadcaster>(g_ros_node);
 
     geometry_msgs::msg::TransformStamped tf_msg;
     tf_msg.header.stamp = odomAftMapped.header.stamp;
@@ -770,8 +720,8 @@ void publish_odometry(const rclcpp::Node::SharedPtr node_, const OdomPublisher &
     tf_msg.transform.rotation = odomAftMapped.pose.pose.orientation;
 
     br->sendTransform(tf_msg);
-}
 #endif
+}
 
 void publish_path(const PathPublisher pubPath)
 {
@@ -1022,18 +972,9 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
-    #ifdef USE_ROS1
-    auto sub_pcl = p_pre->lidar_type == AVIA ? \
-        create_subscriber<PointCloud2Msg>(lid_topic, 200000, livox_pcl_cbk) : \
+    auto sub_pcl = (p_pre->lidar_type == AVIA) ?
+        create_subscriber<LivoxMsg>(lid_topic, 200000, livox_pcl_cbk) :
         create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
-    #else  // USE_ROS2
-    std::shared_ptr<rclcpp::SubscriptionBase> sub_pcl;
-    if (p_pre->lidar_type == AVIA) {
-        sub_pcl = create_subscriber<livox_ros_driver2::msg::CustomMsg>(lid_topic, 200000, livox_pcl_cbk);
-    } else {
-        sub_pcl = create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
-    }
-    #endif
     
     auto sub_reloc = create_subscriber<PoseStampedMsg>(reloc_topic, 10, reloc_cbk);
     auto sub_imu = create_subscriber<ImuMsg>(imu_topic, 200000, imu_cbk);
@@ -1042,14 +983,13 @@ int main(int argc, char** argv)
     auto pubLaserCloudEffect = create_publisher<PointCloud2Msg>("/cloud_effected", 100000);
     auto pubLaserCloudMap = create_publisher<PointCloud2Msg>("/Laser_map", 100000);
     #ifdef USE_ROS1
-    auto pubOdomAftMapped = create_publisher<OdometryMsg>("/Odometry", 100000);
-    auto pubPath = create_publisher<PathMsg>("/path", 100000);
-    auto pubOdomHighFreq = create_publisher<OdometryMsg>("/OdometryHighFreq", 100000);
-    #elif defined(USE_ROS2)
-    auto pubOdomAftMapped = create_publisher_qos<OdometryMsg>("/Odometry", rclcpp::QoS(rclcpp::KeepLast(50)).reliable());
-    auto pubPath = create_publisher_qos<PathMsg>("/path", rclcpp::QoS(rclcpp::KeepLast(50)).reliable());
-    auto pubOdomHighFreq = create_publisher_qos<OdometryMsg>("/OdometryHighFreq", rclcpp::QoS(rclcpp::KeepLast(50)).reliable());
+    int odom_qos = 0;  // ROS1 ignores this parameter
+    #else defined(USE_ROS2) 
+    auto odom_qos = rclcpp::QoS(rclcpp::KeepLast(50)).reliable();
     #endif
+    auto pubOdomAftMapped = create_publisher_qos<OdometryMsg>("/Odometry", odom_qos);
+    auto pubPath = create_publisher_qos<PathMsg>("/path", odom_qos);
+    auto pubOdomHighFreq = create_publisher_qos<OdometryMsg>("/OdometryHighFreq", odom_qos);
     p_pre->pub_corn = create_publisher<PointCloud2Msg>("/corn_feature", 100000);
     p_pre->pub_surf = create_publisher<PointCloud2Msg>("/surf_feature", 100000);
 
@@ -1060,11 +1000,7 @@ int main(int argc, char** argv)
     }
 
     std::thread odomhighthread([&](){
-        #ifdef USE_ROS1
-            publish_odometryhighfreq(p_imu->pbuffer, pubOdomHighFreq);
-        #elif defined(USE_ROS2)
-            publish_odometryhighfreq(g_ros_node, p_imu->pbuffer, pubOdomHighFreq);
-        #endif
+        publish_odometryhighfreq(p_imu->pbuffer, pubOdomHighFreq);
     });
     odomhighthread.detach();
     
@@ -1224,11 +1160,7 @@ int main(int argc, char** argv)
             }
 
             /******* Publish odometry *******/
-            #ifdef USE_ROS1
-                publish_odometry(pubOdomAftMapped);
-            #elif defined(USE_ROS2)
-                publish_odometry(node, pubOdomAftMapped);
-            #endif
+            publish_odometry(pubOdomAftMapped);
 
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();
