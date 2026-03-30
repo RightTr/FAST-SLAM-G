@@ -48,8 +48,11 @@ class ImuProcess
   void set_acc_bias_cov(const V3D &b_a);
   void set_use_zupt(bool enabled);
   void set_zupt_thresholds(double acc_norm_threshold, double gyro_threshold);
+  void set_zupt_adaptive_params(double r_min, double r_max, double conf_min,
+                                 double inflate_pos, double inflate_rot, int inflate_start);
 
-  bool is_static_window(const MeasureGroup &meas) const;
+  double compute_static_confidence(const MeasureGroup &meas);
+  double get_static_confidence() const { return static_confidence_; }
 
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
@@ -70,11 +73,21 @@ class ImuProcess
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
   void UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_in_out);
-  void zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state);
+  void zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, double confidence);
 
-  bool use_zupt = false;
+  bool   use_zupt = false;
   double zupt_acc_var_threshold;
   double zupt_gyro_var_threshold;
+
+  double static_confidence_      = 0.0;
+  int    static_step_count_      = 0;
+  double zupt_vel_ema_           = 0.0;
+  double zupt_r_min_             = 1e-5;
+  double zupt_r_max_             = 1.0;
+  double zupt_confidence_min_    = 0.05;
+  double cov_inflate_pos_        = 1e-7;
+  double cov_inflate_rot_        = 1e-8;
+  int    static_inflation_start_ = 200;
 
   PointCloudXYZI::Ptr cur_pcl_un_;
   ImuMsgConstPtr last_imu_;
@@ -176,51 +189,53 @@ void ImuProcess::set_zupt_thresholds(double acc_var_threshold, double gyro_var_t
   zupt_gyro_var_threshold = gyro_var_threshold;
 }
 
-bool ImuProcess::is_static_window(const MeasureGroup &meas) const
+void ImuProcess::set_zupt_adaptive_params(double r_min, double r_max, double conf_min,
+                                           double inflate_pos, double inflate_rot, int inflate_start)
 {
-  if (meas.imu.empty()) return false;
+  zupt_r_min_             = r_min;
+  zupt_r_max_             = r_max;
+  zupt_confidence_min_    = conf_min;
+  cov_inflate_pos_        = inflate_pos;
+  cov_inflate_rot_        = inflate_rot;
+  static_inflation_start_ = inflate_start;
+}
 
-  // Calculate mean
-  V3D acc_sum = Zero3d;
-  V3D gyro_sum = Zero3d;
+// confidence = exp(-3 * max_normalized_variance), in [0,1]
+// 1 = definitely static, 0 = definitely moving
+double ImuProcess::compute_static_confidence(const MeasureGroup &meas)
+{
+  if (meas.imu.empty()) { static_confidence_ = 0.0; return 0.0; }
+
+  V3D acc_sum = Zero3d, gyro_sum = Zero3d;
   for (const auto &imu : meas.imu)
   {
-    acc_sum += V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
-    gyro_sum += V3D(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
+    acc_sum  += V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
+    gyro_sum += V3D(imu->angular_velocity.x,    imu->angular_velocity.y,    imu->angular_velocity.z);
   }
-
-  const double inv_n = 1.0 / static_cast<double>(meas.imu.size());
-  const V3D acc_mean = acc_sum * inv_n;
+  const double inv_n  = 1.0 / static_cast<double>(meas.imu.size());
+  const V3D acc_mean  = acc_sum  * inv_n;
   const V3D gyro_mean = gyro_sum * inv_n;
 
-  // Calculate variance
-  V3D acc_var = Zero3d;
-  V3D gyro_var = Zero3d;
+  V3D acc_var = Zero3d, gyro_var = Zero3d;
   for (const auto &imu : meas.imu)
   {
-    V3D acc_diff = V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z) - acc_mean;
-    V3D gyro_diff = V3D(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z) - gyro_mean;
-    acc_var += acc_diff.cwiseProduct(acc_diff);
-    gyro_var += gyro_diff.cwiseProduct(gyro_diff);
+    V3D da = V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z) - acc_mean;
+    V3D dg = V3D(imu->angular_velocity.x,    imu->angular_velocity.y,    imu->angular_velocity.z)    - gyro_mean;
+    acc_var  += da.cwiseProduct(da);
+    gyro_var += dg.cwiseProduct(dg);
   }
-  acc_var *= inv_n;
+  acc_var  *= inv_n;
   gyro_var *= inv_n;
 
-  // Check if all variances are below thresholds
-  bool is_static = true;
+  double max_ratio = 0.0;
   for (int i = 0; i < 3; i++)
   {
-    if (acc_var[i] > zupt_acc_var_threshold || gyro_var[i] > zupt_gyro_var_threshold)
-    {
-      is_static = false;
-      break;
-    }
+    max_ratio = std::max(max_ratio, acc_var[i]  / zupt_acc_var_threshold);
+    max_ratio = std::max(max_ratio, gyro_var[i] / zupt_gyro_var_threshold);
   }
 
-  // printf("Acc Var: [%.6f, %.6f, %.6f], Acc Mean: [%.6f, %.6f, %.6f], Gyro Var: [%.6f, %.6f, %.6f], Static: %d\n",
-  //        acc_var[0], acc_var[1], acc_var[2], acc_mean.x(), acc_mean.y(), acc_mean.z(), gyro_var[0], gyro_var[1], gyro_var[2], is_static);
-
-  return is_static;
+  static_confidence_ = std::exp(-3.0 * max_ratio);
+  return static_confidence_;
 }
 
 void ImuProcess::PBufferPop(Pose &pose)
@@ -285,37 +300,59 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
 
 }
 
-void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state)
+void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, double confidence)
 {
-	const state_ikfom& s = kf_state.get_x();
-	esekfom::dyn_share_datastruct<double> ekfom_data;
+  const state_ikfom& s = kf_state.get_x();
 
-	ekfom_data.h_x = MatrixXd::Zero(3, state_ikfom::DOF);
-	ekfom_data.h.resize(3);
-	// ZUPT measurement model: vel = 0
-	ekfom_data.h_x.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
-	ekfom_data.h.block<3, 1>(0, 0) = -s.vel;
-	ekfom_data.R = MatrixXd::Identity(3, 3) * 1e-5;
+  // Residual adaptation: EMA of velocity norm attenuates confidence when
+  // the system moves slowly but continuously (low IMU variance, nonzero vel)
+  const double vel_norm    = s.vel.norm();
+  zupt_vel_ema_            = 0.9 * zupt_vel_ema_ + 0.1 * vel_norm;
+  const double eff_conf    = confidence * std::exp(-zupt_vel_ema_ / 0.05);
 
-	auto P = kf_state.get_P();
-	const MatrixXd K = P * ekfom_data.h_x.transpose() * (ekfom_data.h_x * P * ekfom_data.h_x.transpose() + ekfom_data.R).inverse();
-	const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> I =
-		Matrix<double, state_ikfom::DOF, state_ikfom::DOF>::Identity();
+  // Dynamic ZUPT weight: R = zupt_r_min / eff_conf, capped at zupt_r_max
+  const double r_scalar    = std::min(zupt_r_min_ / std::max(eff_conf, 1e-4), zupt_r_max_);
 
-	state_ikfom x = kf_state.get_x();
-	x.boxplus(Matrix<double, state_ikfom::DOF, 1>(K * ekfom_data.h));
-	kf_state.change_x(x);
+  esekfom::dyn_share_datastruct<double> ekfom_data;
+  ekfom_data.h_x = MatrixXd::Zero(3, state_ikfom::DOF);
+  ekfom_data.h.resize(3);
+  ekfom_data.h_x.block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
+  ekfom_data.h.block<3, 1>(0, 0)    = -s.vel;
+  ekfom_data.R = MatrixXd::Identity(3, 3) * r_scalar;
 
-	const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> KH = K * ekfom_data.h_x;
-	Matrix<double, state_ikfom::DOF, state_ikfom::DOF> P_new =
-		(I - KH) * P * (I - KH).transpose() + K * ekfom_data.R * K.transpose();
-	kf_state.change_P(P_new);
+  auto P = kf_state.get_P();
+
+  // Covariance inflation: prevent lock-in after long static periods
+  // Error-state layout (use-ikfom.hpp): pos=0-2, rot=3-5
+  static_step_count_++;
+  if (static_step_count_ > static_inflation_start_)
+  {
+    P.block<3, 3>(0, 0) += Eigen::Matrix3d::Identity() * cov_inflate_pos_;
+    P.block<3, 3>(3, 3) += Eigen::Matrix3d::Identity() * cov_inflate_rot_;
+    kf_state.change_P(P);
+  }
+
+  const MatrixXd K = P * ekfom_data.h_x.transpose() *
+                     (ekfom_data.h_x * P * ekfom_data.h_x.transpose() + ekfom_data.R).inverse();
+  const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> I =
+    Matrix<double, state_ikfom::DOF, state_ikfom::DOF>::Identity();
+
+  state_ikfom x = kf_state.get_x();
+  x.boxplus(Matrix<double, state_ikfom::DOF, 1>(K * ekfom_data.h));
+  kf_state.change_x(x);
+
+  const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> KH = K * ekfom_data.h_x;
+  Matrix<double, state_ikfom::DOF, state_ikfom::DOF> P_new =
+    (I - KH) * P * (I - KH).transpose() + K * ekfom_data.R * K.transpose();
+  kf_state.change_P(P_new);
 }
 
 void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out)
 {
-  /*** Judge static state for whole LiDAR frame (window-based variance check) ***/
-  const bool is_frame_static = use_zupt ? is_static_window(meas) : false;
+  /*** Compute static confidence for this LiDAR frame (caches result in static_confidence_) ***/
+  const double frame_confidence = use_zupt ? compute_static_confidence(meas) : 0.0;
+  const bool   is_frame_static  = frame_confidence >= zupt_confidence_min_;
+  if (!is_frame_static) static_step_count_ = 0;
 
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
@@ -386,11 +423,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
     kf_state.predict(dt, Q, in);
-    {
-      if (is_frame_static) {
-        zupt_update(kf_state);
-      }
-    }
+    if (is_frame_static) zupt_update(kf_state, frame_confidence);
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();
@@ -411,9 +444,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
-  {
-    if (is_frame_static) zupt_update(kf_state);
-  }
+  if (is_frame_static) zupt_update(kf_state, frame_confidence);
 
   imu_state = kf_state.get_x();
   last_imu_ = meas.imu.back();
