@@ -1,6 +1,6 @@
 # FAST-LIO-SAM
 
-A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, supporting **RoboSense series LiDARs**, **Unilidar series LiDARs**, and compatible with both **ROS1** and **ROS2**.
+A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**.
 
 ## 🧩 Contributions
 
@@ -12,7 +12,7 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 
 * Manual initial pose setting for relocalization
 
-* ZUPT detection and handling
+* Static detection and adaptive weight handling between LiDAR update scans and ZUPT
 
 * Support for RoboSense series LiDARs, Unilidar series LiDARs
 
@@ -81,17 +81,33 @@ ros2 launch fast_lio_sam reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
-## ZUPT Detection and Handling
+## Static detection and adaptive weight handling
 
-The zero-velocity pseudo-observation updates the EKF when the acceleration norm and gyroscope readings fall below certain thresholds.
+The system will adjust the confidence of the ZUPT and LiDAR updates based on the detected motion state, using **accelerometer and gyroscope variances** as well as **the EMA of velocity**. When the system detects a static state, it will increase the confidence of the ZUPT update and decrease the confidence of the LiDAR update, and vice versa when in motion.
 
 Check the related parameters in the .yaml files.
 
 ```yaml
 zupt:
-    use_zupt: false              # enable zero velocity update
-    zupt_acc_norm_threshold: 0.30 # (m/s²) acceleration norm threshold for ZUPT
-    zupt_gyro_threshold: 0.05    # (rad/s) gyroscope threshold for ZUPT
+    use_zupt: true                    # enable adaptive zero velocity update
+    zupt_acc_var_threshold:  0.0001   # (m/s²)² per-axis acc variance → full-confidence threshold
+    zupt_gyro_var_threshold: 0.00001  # (rad/s)² per-axis gyro variance → full-confidence threshold
+
+    # Static confidence: exp(-3 * max_normalized_variance), in [0,1]
+    zupt_confidence_min: 0.05         # below this no ZUPT is applied
+
+    # Dynamic ZUPT weight: R = clamp(zupt_r_min / eff_confidence, zupt_r_max)
+    zupt_r_min: 1.0e-5                # ZUPT measurement noise at full confidence
+    zupt_r_max: 1.0                   # ZUPT measurement noise cap (≈ no constraint)
+
+    # Dynamic LiDAR weight: lidar_cov = LASER_POINT_COV * (1 + scale*conf) * max(1, residual/ref)
+    lidar_cov_static_scale: 5.0       # LiDAR cov multiplier at full confidence
+    lidar_residual_ref: 0.05          # (m) reference residual; above this LiDAR trust reduces
+
+    # Covariance inflation (lock-in prevention)
+    cov_inflate_start: 200            # IMU steps of continuous static before inflation kicks in
+    cov_inflate_pos:   1.0e-7         # per-step position covariance inflation
+    cov_inflate_rot:   1.0e-8         # per-step rotation covariance inflation
 ```
 
 ### High frequency odometry via IMU propagation between LiDAR scans
@@ -100,7 +116,7 @@ Subscribe the topic */OdometryHighFreq* to receive high frequency odometry outpu
 
 ### Extended LiDAR support
 
-Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy) and Unilidar LiDARs (e.g., Unilidar L1). Check the related files in ./config and ./launch folder.
+Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy) and Unilidar LiDARs (e.g., Unilidar L2). Check the related files in ./config and ./launch folder.
 
 ```bash
 # e.g.
@@ -110,7 +126,7 @@ roslaunch fast_lio_sam mapping_airy.launch
 ## 📝 TODO List
 
 - [x] Full ROS2 adaptation
-- [ ] ROS2 Adaptation Test
+- [ ] ROS2 adaptation Test
 - [ ] GNSS integration
 - [ ] Is fast_lio_interfaces necessary？
 
