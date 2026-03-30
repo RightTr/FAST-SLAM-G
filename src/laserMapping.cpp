@@ -68,7 +68,16 @@ int lidar_type;
 bool use_zupt = false;
 double zupt_acc_var_threshold;
 double zupt_gyro_var_threshold;
-bool static_skip_update = true;
+// Adaptive ZUPT params
+double zupt_r_min              = 1e-5;
+double zupt_r_max              = 1.0;
+double zupt_confidence_min     = 0.05;
+double zupt_inflate_pos        = 1e-7;
+double zupt_inflate_rot        = 1e-8;
+int    zupt_inflate_start      = 200;
+// Adaptive LiDAR weight params
+double lidar_cov_static_scale  = 5.0;
+double lidar_residual_ref      = 0.05;
 
 const M3D IMU_FLIP_R = (M3D() <<
     1.0,  0.0,  0.0,
@@ -845,6 +854,7 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
         return;
     }
 
+    // compute the residual mean
     res_mean_last = total_residual / effct_feat_num;
     match_time  += omp_get_wtime() - match_start;
     double solve_start_  = omp_get_wtime();
@@ -937,10 +947,17 @@ int main(int argc, char** argv)
     rosparam_get("pcd_save/interval", pcd_save_interval, -1);
     rosparam_get("mapping/extrinsic_T", extrinT, std::vector<double>());
     rosparam_get("mapping/extrinsic_R", extrinR, std::vector<double>());
-    rosparam_get("zupt/use_zupt", use_zupt, false);
-    rosparam_get("zupt/zupt_acc_var_threshold", zupt_acc_var_threshold, 0.001);
+    rosparam_get("zupt/use_zupt",                use_zupt,                false);
+    rosparam_get("zupt/zupt_acc_var_threshold",  zupt_acc_var_threshold,  0.001);
     rosparam_get("zupt/zupt_gyro_var_threshold", zupt_gyro_var_threshold, 0.0001);
-    rosparam_get("zupt/static_skip_update", static_skip_update, true);
+    rosparam_get("zupt/zupt_r_min",              zupt_r_min,              1e-5);
+    rosparam_get("zupt/zupt_r_max",              zupt_r_max,              1.0);
+    rosparam_get("zupt/zupt_confidence_min",     zupt_confidence_min,     0.05);
+    rosparam_get("zupt/cov_inflate_pos",         zupt_inflate_pos,        1e-7);
+    rosparam_get("zupt/cov_inflate_rot",         zupt_inflate_rot,        1e-8);
+    rosparam_get("zupt/cov_inflate_start",       zupt_inflate_start,      200);
+    rosparam_get("zupt/lidar_cov_static_scale",  lidar_cov_static_scale,  5.0);
+    rosparam_get("zupt/lidar_residual_ref",      lidar_residual_ref,      0.05);
 
     path.header.stamp = get_ros_now();
     path.header.frame_id = "camera_init";
@@ -986,6 +1003,8 @@ int main(int argc, char** argv)
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
     p_imu->set_use_zupt(use_zupt);
     p_imu->set_zupt_thresholds(zupt_acc_var_threshold, zupt_gyro_var_threshold);
+    p_imu->set_zupt_adaptive_params(zupt_r_min, zupt_r_max, zupt_confidence_min,
+                                     zupt_inflate_pos, zupt_inflate_rot, zupt_inflate_start);
     p_imu->lidar_type = lidar_type;
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
@@ -1145,23 +1164,14 @@ int main(int argc, char** argv)
                 continue;
             }
 
-            const bool is_static_now = use_zupt && p_imu->is_static_window(Measures);
-            
-            if (is_static_now && static_skip_update)
-            {
-                euler_cur = SO3ToEuler(state_point.rot);
-                pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-                geoQuat.x = state_point.rot.coeffs()[0];
-                geoQuat.y = state_point.rot.coeffs()[1];
-                geoQuat.z = state_point.rot.coeffs()[2];
-                geoQuat.w = state_point.rot.coeffs()[3];
+            // confidence cached by UndistortPcl inside p_imu->Process()
+            const double static_confidence = use_zupt ? p_imu->get_static_confidence() : 0.0;
 
-                if (path_en)                         publish_path(pubPath);
-                if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
-                if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
-                if (feature_pub_en)                  publish_map(pubLaserCloudMap);
-                continue;
-            }
+            // Adaptive LiDAR cov: rises with static confidence and previous-frame residual
+            const double lidar_static_scale   = 1.0 + lidar_cov_static_scale * static_confidence;
+            const double lidar_residual_scale = std::max(1.0, res_mean_last / lidar_residual_ref);
+            const double adaptive_lidar_cov   = std::min(
+                LASER_POINT_COV * lidar_static_scale * lidar_residual_scale, 0.1);
             
             normvec->resize(feats_down_size);
             feats_down_world->resize(feats_down_size);
@@ -1188,7 +1198,7 @@ int main(int argc, char** argv)
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
-            kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+            kf.update_iterated_dyn_share_modified(adaptive_lidar_cov, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
