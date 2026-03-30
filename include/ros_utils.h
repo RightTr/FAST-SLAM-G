@@ -256,9 +256,14 @@ inline std::size_t ros_subscription_count(const std::shared_ptr<PubT> &pub) {
 
 // Global ROS1 NodeHandle and ROS2 Node for parameter loading and pub/sub management
 #ifdef USE_ROS1
-static ros::NodeHandle *g_ros_nh = nullptr;
+
+inline ros::NodeHandle*& get_ros_nh() {
+    static ros::NodeHandle *instance = nullptr;
+    return instance;
+}
 
 inline void init_ros_node(const void *node = nullptr) {
+    auto &g_ros_nh = get_ros_nh();
     if (!g_ros_nh) {
         g_ros_nh = new ros::NodeHandle();
     }
@@ -267,19 +272,19 @@ inline void init_ros_node(const void *node = nullptr) {
 template<typename T>
 inline void rosparam_get(const std::string &param_name, T &param_value, const T &default_value) {
     init_ros_node();
-    g_ros_nh->param<T>(param_name, param_value, default_value);
+    get_ros_nh()->param<T>(param_name, param_value, default_value);
 }
 
 // Subscriber creation for ROS1
 template<typename T, typename Callback>
 inline ros::Subscriber create_subscriber(const std::string& topic, uint32_t queue_size, Callback cb) {
-    return g_ros_nh->subscribe(topic, queue_size, cb);
+    return get_ros_nh()->subscribe(topic, queue_size, cb);
 }
 
 // Publisher creation for ROS1
 template<typename T>
 inline ros::Publisher create_publisher(const std::string& topic, uint32_t queue_size) {
-    return g_ros_nh->advertise<T>(topic, queue_size);
+    return get_ros_nh()->advertise<T>(topic, queue_size);
 }
 
 // Publisher creation for ROS1 with QoS (ignores QoS parameter, ROS1 has no QoS support)
@@ -287,13 +292,18 @@ template<typename T, typename QosType>
 inline ros::Publisher create_publisher_qos(const std::string& topic, const QosType& qos) {
     // ROS1 doesn't support QoS, so we ignore the qos parameter
     // and use a default queue size of 50 for critical topics like odometry
-    return g_ros_nh->advertise<T>(topic, 50);
+    return get_ros_nh()->advertise<T>(topic, 50);
 }
 
 #elif defined(USE_ROS2)
-static rclcpp::Node::SharedPtr g_ros_node = nullptr;
+
+inline rclcpp::Node::SharedPtr& get_ros_node() {
+    static rclcpp::Node::SharedPtr instance = nullptr;
+    return instance;
+}
 
 inline void init_ros_node(const rclcpp::Node::SharedPtr &node = nullptr) {
+    auto &g_ros_node = get_ros_node();
     if (!g_ros_node) {
         if (node) {
             g_ros_node = node;
@@ -304,6 +314,7 @@ inline void init_ros_node(const rclcpp::Node::SharedPtr &node = nullptr) {
 }
 
 inline void spin_once() {
+    auto &g_ros_node = get_ros_node();
     if (g_ros_node) {
         rclcpp::spin_some(g_ros_node);
     }
@@ -311,31 +322,39 @@ inline void spin_once() {
 
 template<typename T>
 inline void rosparam_get(const std::string &param_name, T &param_value, const T &default_value) {
-    param_value = g_ros_node->declare_parameter<T>(param_name, default_value);
+    get_ros_node()->declare_parameter<T>(param_name, default_value);
+    param_value = get_ros_node()->get_parameter(param_name).get_value<T>();
+}
+
+// ROS2 has no float parameter type (only double), so specialize float to go through double
+template<>
+inline void rosparam_get<float>(const std::string &param_name, float &param_value, const float &default_value) {
+    get_ros_node()->declare_parameter<double>(param_name, static_cast<double>(default_value));
+    param_value = static_cast<float>(get_ros_node()->get_parameter(param_name).get_value<double>());
 }
 
 // Subscriber creation for ROS2
 template<typename T, typename Callback>
 inline typename rclcpp::Subscription<T>::SharedPtr create_subscriber(const std::string& topic, uint32_t queue_size, Callback cb) {
-    return g_ros_node->create_subscription<T>(topic, rclcpp::QoS(rclcpp::KeepLast(queue_size)), cb);
+    return get_ros_node()->create_subscription<T>(topic, rclcpp::QoS(rclcpp::KeepLast(queue_size)), cb);
 }
 
 // Publisher creation for ROS2
 template<typename T>
 inline typename rclcpp::Publisher<T>::SharedPtr create_publisher(const std::string& topic, uint32_t queue_size) {
-    return g_ros_node->create_publisher<T>(topic, rclcpp::QoS(rclcpp::KeepLast(queue_size)));
+    return get_ros_node()->create_publisher<T>(topic, rclcpp::QoS(rclcpp::KeepLast(queue_size)));
 }
 
 // Publisher creation for ROS2 with custom QoS
 template<typename T>
 inline typename rclcpp::Publisher<T>::SharedPtr create_publisher_qos(const std::string& topic, const rclcpp::QoS& qos) {
-    return g_ros_node->create_publisher<T>(topic, qos);
+    return get_ros_node()->create_publisher<T>(topic, qos);
 }
 
 // Subscriber creation for ROS2 with custom QoS
 template<typename T, typename Callback>
 inline typename rclcpp::Subscription<T>::SharedPtr create_subscriber_qos(const std::string& topic, const rclcpp::QoS& qos, Callback cb) {
-    return g_ros_node->create_subscription<T>(topic, qos, cb);
+    return get_ros_node()->create_subscription<T>(topic, qos, cb);
 }
 #endif
 

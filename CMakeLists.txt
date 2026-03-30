@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(fast_lio_sam)
 
-SET(CMAKE_BUILD_TYPE "Debug")
+# Force Release build type
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 
 ADD_COMPILE_OPTIONS(-std=c++14 )
 ADD_COMPILE_OPTIONS(-std=c++14 )
@@ -124,7 +125,11 @@ if(USE_ROS2)
   find_package(livox_ros_driver2)
   find_package(visualization_msgs REQUIRED)
   
-  add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+  add_executable(fastlio_mapping src/laserMapping.cpp
+    include/ikd-Tree/ikd_Tree.cpp
+    src/preprocess.cpp
+    src/utility.cpp
+    src/mapOptimization.cpp)
   ament_target_dependencies(fastlio_mapping
     rclcpp
     sensor_msgs
@@ -138,7 +143,7 @@ if(USE_ROS2)
     livox_ros_driver2
     visualization_msgs
   )
-  target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+  target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam)
   target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
   install(
   DIRECTORY
@@ -148,7 +153,8 @@ if(USE_ROS2)
   )
   install(
     FILES 
-    rviz_cfg/loam_livox_ros2.rviz
+    rviz_cfg/loam_ros2.rviz
+    rviz_cfg/sam_ros2.rviz
     DESTINATION share/${PROJECT_NAME}/rviz_cfg
   )
   install(TARGETS fastlio_mapping

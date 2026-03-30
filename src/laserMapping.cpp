@@ -680,7 +680,7 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 #elif defined(USE_ROS2)
         init_ros_node();
         static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf;
-        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(g_ros_node);
+        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(get_ros_node());
         geometry_msgs::msg::TransformStamped tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = "camera_init";
@@ -743,7 +743,7 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
 #elif defined(USE_ROS2)
     init_ros_node();
     static std::shared_ptr<tf2_ros::TransformBroadcaster> br;
-    br = std::make_shared<tf2_ros::TransformBroadcaster>(g_ros_node);
+    br = std::make_shared<tf2_ros::TransformBroadcaster>(get_ros_node());
 
     geometry_msgs::msg::TransformStamped tf_msg;
     tf_msg.header.stamp = odomAftMapped.header.stamp;
@@ -899,12 +899,12 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 int main(int argc, char** argv)
 {
     #ifdef USE_ROS1
-    ros::init(argc, argv, "laserMapping");
+    ros::init(argc, argv, "fast_lio_sam");
     init_ros_node();
     
     #elif defined(USE_ROS2)
     rclcpp::init(argc, argv);
-    init_ros_node(rclcpp::Node::make_shared("laserMapping"));
+    init_ros_node(rclcpp::Node::make_shared("fast_lio_sam"));
     #endif
 
     // Load parameters (unified ROS1/ROS2)
@@ -1025,9 +1025,13 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
-    auto sub_pcl = (p_pre->lidar_type == AVIA) ?
-        create_subscriber<LivoxMsg>(lid_topic, 200000, livox_pcl_cbk) :
-        create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
+    if (p_pre->lidar_type == AVIA) {
+        static auto sub_pcl = create_subscriber<LivoxMsg>(
+            lid_topic, 200000, livox_pcl_cbk);
+    } else {
+        static auto sub_pcl = create_subscriber<PointCloud2Msg>(
+            lid_topic, 200000, standard_pcl_cbk);
+    }
     
     auto sub_reloc = create_subscriber<PoseStampedMsg>(reloc_topic, 10, reloc_cbk);
     auto sub_imu = create_subscriber<ImuMsg>(imu_topic, 200000, imu_cbk);

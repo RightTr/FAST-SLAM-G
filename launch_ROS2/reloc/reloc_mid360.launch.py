@@ -49,7 +49,6 @@ def generate_launch_description():
     fast_lio_sam = Node(
         package='fast_lio_sam',
         executable='fastlio_mapping',
-        name='laserMapping',
         output='screen',
         parameters=fast_lio_params
     )
