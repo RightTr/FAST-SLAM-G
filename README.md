@@ -12,7 +12,7 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 
 * Manual initial pose setting for relocalization
 
-* Static detection and adaptive weight handling between LiDAR update scans and ZUPT
+* Stationary detection and adaptive weight handling between LiDAR update scans and ZUPT
 
 * Support for RoboSense series LiDARs, Unilidar series LiDARs
 
@@ -81,9 +81,9 @@ ros2 launch fast_lio_sam reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
-## Static detection and adaptive weight handling
+## Stationary detection and adaptive weight handling
 
-The system will adjust the confidence of the ZUPT and LiDAR updates based on the detected motion state, using **accelerometer and gyroscope variances** as well as **the EMA of velocity**. When the system detects a static state, it will increase the confidence of the ZUPT update and decrease the confidence of the LiDAR update, and vice versa when in motion.
+The system will adjust the confidence of the ZUPT and LiDAR updates based on the detected motion state, using **accelerometer and gyroscope variances** as well as **the EMA of velocity**. When the system detects a stationary state, it will increase the confidence of the ZUPT update and decrease the confidence of the LiDAR update, and vice versa when in motion.
 
 Check the related parameters in the .yaml files.
 
