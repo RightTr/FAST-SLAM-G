@@ -65,7 +65,6 @@ bool reloc_en = false;
 bool sam_enable = false;
 bool imu_flip = false;
 int lidar_type;
-int odom_imu_frequency;
 bool use_zupt = false;
 double zupt_acc_var_threshold;
 double zupt_gyro_var_threshold;
@@ -632,12 +631,11 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
 
 void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomHighFreq)
 {
-    RateType rate(odom_imu_frequency);
     while (ros_ok() && !flg_exit){
         Pose pose;
         if (!pbuffer.TryPop(pose))
         {
-            rate.sleep();
+            usleep(1000);
             continue;
         }
         OdomMsg msg;
@@ -684,7 +682,6 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         tf_msg.transform.rotation = msg.pose.pose.orientation;
         br_hf->sendTransform(tf_msg);
 #endif
-        rate.sleep();
     }
 }
 
@@ -940,7 +937,6 @@ int main(int argc, char** argv)
     rosparam_get("pcd_save/interval", pcd_save_interval, -1);
     rosparam_get("mapping/extrinsic_T", extrinT, std::vector<double>());
     rosparam_get("mapping/extrinsic_R", extrinR, std::vector<double>());
-    rosparam_get("publish/odom_imu_frequency", odom_imu_frequency, 100);
     rosparam_get("zupt/use_zupt", use_zupt, false);
     rosparam_get("zupt/zupt_acc_var_threshold", zupt_acc_var_threshold, 0.001);
     rosparam_get("zupt/zupt_gyro_var_threshold", zupt_gyro_var_threshold, 0.0001);
