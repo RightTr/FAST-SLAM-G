@@ -227,13 +227,16 @@ double ImuProcess::compute_static_confidence(const MeasureGroup &meas)
   acc_var  *= inv_n;
   gyro_var *= inv_n;
 
+  // compute the maximum variance ratio among all axes and both acc and gyro
   double max_ratio = 0.0;
   for (int i = 0; i < 3; i++)
   {
     max_ratio = std::max(max_ratio, acc_var[i]  / zupt_acc_var_threshold);
     max_ratio = std::max(max_ratio, gyro_var[i] / zupt_gyro_var_threshold);
   }
-
+   
+  // static_confidence_ -> 1 when variance is much smaller than threshold, very likely static
+  // static confidence_ -> 0 when variance is much larger than threshold, very likely moving
   static_confidence_ = std::exp(-3.0 * max_ratio);
   return static_confidence_;
 }
@@ -308,6 +311,8 @@ void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_st
   // the system moves slowly but continuously (low IMU variance, nonzero vel)
   const double vel_norm    = s.vel.norm();
   zupt_vel_ema_            = 0.9 * zupt_vel_ema_ + 0.1 * vel_norm;
+  
+  // confidence -> 1 when static, 0 when moving; also attenuated when slow movement is detected
   const double eff_conf    = confidence * std::exp(-zupt_vel_ema_ / 0.05);
 
   // Dynamic ZUPT weight: R = zupt_r_min / eff_conf, capped at zupt_r_max
@@ -323,7 +328,6 @@ void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_st
   auto P = kf_state.get_P();
 
   // Covariance inflation: prevent lock-in after long static periods
-  // Error-state layout (use-ikfom.hpp): pos=0-2, rot=3-5
   static_step_count_++;
   if (static_step_count_ > static_inflation_start_)
   {
@@ -332,6 +336,7 @@ void ImuProcess::zupt_update(esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_st
     kf_state.change_P(P);
   }
 
+  // EKF update with pseudo-measurement: vel = 0
   const MatrixXd K = P * ekfom_data.h_x.transpose() *
                      (ekfom_data.h_x * P * ekfom_data.h_x.transpose() + ekfom_data.R).inverse();
   const Matrix<double, state_ikfom::DOF, state_ikfom::DOF> I =
