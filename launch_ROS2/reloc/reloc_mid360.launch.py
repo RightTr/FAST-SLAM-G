@@ -11,7 +11,7 @@ def load_ros1_yaml_as_params(yaml_file_path):
     with open(yaml_file_path, 'r') as file:
         config = yaml.safe_load(file)
 
-    def flatten_dict(d, parent_key='', sep='.'):
+    def flatten_dict(d, parent_key='', sep='/'):
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -23,7 +23,7 @@ def load_ros1_yaml_as_params(yaml_file_path):
     
     return flatten_dict(config)
 
-rviz_cfg = os.path.join( get_package_share_directory("fast_lio_sam"), "rviz_cfg", "loam_livox_ros2.rviz" )
+rviz_cfg = os.path.join( get_package_share_directory("fast_lio_sam"), "rviz_cfg", "loam_ros2.rviz" )
 
 print(rviz_cfg)
 
