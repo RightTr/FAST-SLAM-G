@@ -10,6 +10,8 @@ Panels:
         - /Path1/Topic1
         - /Axes1
         - /Keyframe1
+        - /Keyframe1/KeyframeRecent1
+        - /Keyframe1/KeyframeGlobal1
       Splitter Ratio: 0.5
     Tree Height: 1009
   - Class: rviz_common/Selection
@@ -29,7 +31,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: KeyframeXYZ
 Visualization Manager:
   Class: ""
   Displays:
@@ -298,16 +300,16 @@ Visualization Manager:
           Channel Name: intensity
           Class: rviz_default_plugins/PointCloud2
           Color: 255; 255; 255
-          Color Transformer: ""
+          Color Transformer: Intensity
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
           Max Color: 255; 255; 255
-          Max Intensity: 4096
+          Max Intensity: 55
           Min Color: 0; 0; 0
           Min Intensity: 0
           Name: KeyframeXYZ
-          Position Transformer: ""
+          Position Transformer: XYZ
           Selectable: true
           Size (Pixels): 3
           Size (m): 0.10000000149011612
@@ -331,17 +333,17 @@ Visualization Manager:
           Axis: Z
           Channel Name: intensity
           Class: rviz_default_plugins/PointCloud2
-          Color: 255; 255; 255
-          Color Transformer: ""
+          Color: 25; 255; 0
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
           Max Color: 255; 255; 255
-          Max Intensity: 4096
+          Max Intensity: 0
           Min Color: 0; 0; 0
           Min Intensity: 0
           Name: KeyframeRecent
-          Position Transformer: ""
+          Position Transformer: XYZ
           Selectable: true
           Size (Pixels): 3
           Size (m): 0.10000000149011612
@@ -359,8 +361,8 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 19.15455436706543
-            Min Value: -21.139678955078125
+            Max Value: 11.394532203674316
+            Min Value: -0.7922396063804626
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -466,7 +468,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 14.06697940826416
+      Distance: 22.074785232543945
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -481,10 +483,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4753989279270172
+      Pitch: 0.7803986668586731
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.7553983926773071
+      Yaw: 5.998579978942871
     Saved: ~
 Window Geometry:
   Displays:
@@ -503,4 +505,4 @@ Window Geometry:
     collapsed: false
   Width: 1920
   X: 90
-  Y: 213
+  Y: 187

@@ -757,7 +757,7 @@ void loopClosureThread()
     ROS_PRINT_INFO("...... Loop Closure Thread Start......");
 
     RateType rate(loopClosureFrequency);
-    while (ros_ok())
+    while (ros_ok() && !flg_exit)
     {
         rate.sleep();
         performLoopClosure();
@@ -816,7 +816,7 @@ void publishGlobalMap() {
 void visualizeGlobalMapThread()
 {
     RateType rate(0.2);
-    while (ros_ok()){
+    while (ros_ok() && !flg_exit){
         rate.sleep();
         publishGlobalMap();
     }

@@ -4,6 +4,7 @@
 #include <string>
 #include <deque>
 #include <vector>
+#include <atomic>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include "ros_utils.h"
@@ -44,6 +45,8 @@ extern float globalMapVisualizationLeafSize;
 extern float mappingICPSize;
 
 extern int ikdtreeSearchNeighborNum;
+
+extern std::atomic<bool> flg_exit;
 
 void read_liosam_params();
 

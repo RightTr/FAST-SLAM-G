@@ -59,7 +59,8 @@ double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_en
 int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0};
-bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
+bool   lidar_pushed, flg_first_scan = true, flg_EKF_inited;
+std::atomic<bool> flg_exit(false);
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool reloc_en = false;
 bool sam_enable = false;
@@ -138,7 +139,6 @@ void SigHandle(int sig)
     flg_exit = true;
     ROS_PRINT_WARN("catch sig %d", sig);
     sig_buffer.notify_all();
-    ros_shutdown();
 }
 
 inline void dump_lio_state_to_log(FILE *fp)  
@@ -1025,12 +1025,11 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
+    std::shared_ptr<void> sub_pcl;
     if (p_pre->lidar_type == AVIA) {
-        static auto sub_pcl = create_subscriber<LivoxMsg>(
-            lid_topic, 200000, livox_pcl_cbk);
+        sub_pcl = create_subscriber<LivoxMsg>(lid_topic, 200000, livox_pcl_cbk);
     } else {
-        static auto sub_pcl = create_subscriber<PointCloud2Msg>(
-            lid_topic, 200000, standard_pcl_cbk);
+        sub_pcl = create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
     }
     
     auto sub_reloc = create_subscriber<PoseStampedMsg>(reloc_topic, 10, reloc_cbk);
@@ -1059,23 +1058,20 @@ int main(int argc, char** argv)
     std::thread odomhighthread([&](){
         publish_odometryhighfreq(p_imu->pbuffer, pubOdomHighFreq);
     });
-    odomhighthread.detach();
-    
+
+    std::thread loopthread;
+    std::thread globalthread;
     if (sam_enable)
     {
-        std::thread loopthread(&loopClosureThread);
-        std::thread globalthread(&visualizeGlobalMapThread);
-        loopthread.detach();
-        globalthread.detach();
+        loopthread = std::thread(&loopClosureThread);
+        globalthread = std::thread(&visualizeGlobalMapThread);
     }
 
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     RateType rate(5000);
-    bool status = ros_ok();
-    while (status)
+    while (ros_ok() && !flg_exit)
     {
-        if (flg_exit) break;
         spin_once();
 
         if(reloc_en)
@@ -1269,8 +1265,7 @@ int main(int argc, char** argv)
             }
         }
 
-        status = ros_ok();
-            rate.sleep();
+        rate.sleep();
     }            
 
     /**************** save map ****************/
@@ -1306,5 +1301,16 @@ int main(int argc, char** argv)
         fclose(fp2);
     }
     
+    flg_exit = true;
+    if (odomhighthread.joinable()) {
+        odomhighthread.join();
+    }
+    if (loopthread.joinable()) {
+        loopthread.join();
+    }
+    if (globalthread.joinable()) {
+        globalthread.join();
+    }
+
     return 0;
 }
