@@ -1025,11 +1025,10 @@ int main(int argc, char** argv)
         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
 
     /*** ROS subscribe initialization ***/
-    std::shared_ptr<void> sub_pcl;
     if (p_pre->lidar_type == AVIA) {
-        sub_pcl = create_subscriber<LivoxMsg>(lid_topic, 200000, livox_pcl_cbk);
+        static auto sub_pcl = create_subscriber<LivoxMsg>(lid_topic, 200000, livox_pcl_cbk);
     } else {
-        sub_pcl = create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
+        static auto sub_pcl = create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
     }
     
     auto sub_reloc = create_subscriber<PoseStampedMsg>(reloc_topic, 10, reloc_cbk);
