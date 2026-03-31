@@ -36,9 +36,6 @@ cd fastlio_sam_ws
 mkdir src && cd src
 git clone https://github.com/RightTr/FAST-LIO-SAM.git
 
-# Clone the FAST-LIO interfaces package for ROS1
-git clone https://github.com/RightTr/fast_lio_interfaces.git
-
 cd src/FAST-LIO-SAM
 git submodule update --init --recursive
 
@@ -125,10 +122,9 @@ roslaunch fast_lio_sam mapping_airy.launch
 
 ## 📝 TODO List
 
-- [x] Full ROS2 adaptation
-- [ ] ROS2 adaptation Test
-- [ ] GNSS integration
-- [ ] Is fast_lio_interfaces necessary？
+* [x] Full ROS2 adaptation
+* [ ] ROS2 adaptation Test
+* [ ] GNSS integration
 
 ## 📚 Related Works
 

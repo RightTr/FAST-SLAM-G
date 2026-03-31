@@ -120,10 +120,16 @@ if(USE_ROS2)
   find_package(nav_msgs REQUIRED)
   find_package(tf2_ros REQUIRED)
   find_package(pcl_conversions REQUIRED)
-  find_package(fast_lio_interfaces REQUIRED)
+  find_package(rosidl_default_generators REQUIRED)
   find_package(tf2_eigen REQUIRED)
   find_package(livox_ros_driver2)
   find_package(visualization_msgs REQUIRED)
+
+  rosidl_generate_interfaces(${PROJECT_NAME}
+    "msg/Pose6D.msg"
+  )
+
+  rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
   
   add_executable(fastlio_mapping src/laserMapping.cpp
     include/ikd-Tree/ikd_Tree.cpp
@@ -138,11 +144,11 @@ if(USE_ROS2)
     tf2_ros
     pcl_conversions
     PCL
-    fast_lio_interfaces
     tf2_eigen
     livox_ros_driver2
     visualization_msgs
   )
+  target_link_libraries(fastlio_mapping "${cpp_typesupport_target}")
   target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam)
   target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
   install(
@@ -161,5 +167,6 @@ if(USE_ROS2)
     DESTINATION lib/${PROJECT_NAME})
   install(DIRECTORY include/ DESTINATION include)
 
+  ament_export_dependencies(rosidl_default_runtime)
   ament_package() # Don't forget this
 endif()

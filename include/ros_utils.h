@@ -73,7 +73,7 @@ using LivoxMsg = PointCloud2Msg;  // ROS1 Livox driver outputs PointCloud2
 #include <geometry_msgs/msg/vector3.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
-#include <fast_lio_interfaces/msg/pose6_d.hpp>
+#include <fast_lio_sam/msg/pose6_d.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -83,7 +83,7 @@ using PathMsg = nav_msgs::msg::Path;
 using OdometryMsg = nav_msgs::msg::Odometry;
 using OdometryMsgConstPtr = nav_msgs::msg::Odometry::ConstSharedPtr;
 using OdomMsg = nav_msgs::msg::Odometry;
-using Pose6D = fast_lio_interfaces::msg::Pose6D;
+using Pose6D = fast_lio_sam::msg::Pose6D;
 using MarkerMsg = visualization_msgs::msg::Marker;
 using MarkerArrayMsg = visualization_msgs::msg::MarkerArray;
 using PointMsg = geometry_msgs::msg::Point;
