@@ -11,7 +11,7 @@ using namespace std;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, AIRY, UNILIDAR, MARSIM}; //{1, 2, 3}
+enum LID_TYPE{AVIA = 1, VELO16, OUST64, AIRY, UNILIDAR, MARSIM, KAIST}; //{1, 2, 3}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
 enum Surround{Prev, Next};
@@ -116,6 +116,20 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(unilidar_ros::Point,
   (float, time, time)
 )
 
+namespace kaist_ros { // KAIST pointcloud registration
+  struct EIGEN_ALIGN16 Point {
+    PCL_ADD_POINT4D;
+    float intensity;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  };
+}
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(kaist_ros::Point,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+)
 
 class Preprocess
 {
@@ -147,6 +161,7 @@ class Preprocess
   void airy_handler(const Pcl2MsgConstPtr& msg);
   void unilidar_handler(const Pcl2MsgConstPtr& msg);
   void sim_handler(const Pcl2MsgConstPtr &msg);
+  void kaist_handler(const Pcl2MsgConstPtr &msg);
   void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
   void pub_func(const Pcl2Publisher& pub, PointCloudXYZI &pl, const TimeType &ct);
   int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);

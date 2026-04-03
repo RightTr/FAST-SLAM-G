@@ -90,6 +90,10 @@ void Preprocess::process(const Pcl2MsgConstPtr &msg, PointCloudXYZI::Ptr &pcl_ou
   case MARSIM:
     sim_handler(msg);
     break;
+
+  case KAIST:
+    kaist_handler(msg);
+    break;
   
   default:
     printf("Error LiDAR Type");
@@ -623,6 +627,44 @@ void Preprocess::sim_handler(const Pcl2MsgConstPtr &msg) {
         added_pt.curvature = 0.0;
         pl_surf.points.push_back(added_pt);
     }
+}
+
+void Preprocess::kaist_handler(const Pcl2MsgConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_full.clear();
+
+  pcl::PointCloud<kaist_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+
+  int plsize = pl_orig.points.size();
+  if (plsize == 0) return;
+
+  pl_surf.reserve(plsize);
+
+  const double SCAN_PERIOD_MS = 100.0; // 10Hz 100ms
+
+  for (int i = 0; i < plsize; i++)
+  {
+      const auto &src = pl_orig.points[i];
+
+      double range2 = src.x * src.x + src.y * src.y + src.z * src.z;
+      if (range2 < blind * blind) continue;
+
+      PointType pt;
+      pt.x = src.x;
+      pt.y = src.y;
+      pt.z = src.z;
+      pt.intensity = src.intensity;
+
+      pt.normal_x = 0;
+      pt.normal_y = 0;
+      pt.normal_z = 0;
+
+      pt.curvature = SCAN_PERIOD_MS * double(i) / double(plsize - 1);
+
+      pl_surf.points.push_back(pt);
+  }
 }
 
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)
