@@ -26,7 +26,7 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 # Ubuntu 20.04
 sudo add-apt-repository ppa:borglab/gtsam-release-4.0
 # Ubuntu 22.04
-sudo add-apt-repository ppa:borglab/gtsam-release-4.0
+sudo add-apt-repository ppa:borglab/gtsam-release-4.1
 
 sudo apt install libgtsam-dev libgtsam-unstable-dev
 ```
