@@ -23,7 +23,11 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 * [gtsam](https://gtsam.org/get_started/) (Georgia Tech Smoothing and Mapping library)
 
 ```bash
+# Ubuntu 20.04
 sudo add-apt-repository ppa:borglab/gtsam-release-4.0
+# Ubuntu 22.04
+sudo add-apt-repository ppa:borglab/gtsam-release-4.0
+
 sudo apt install libgtsam-dev libgtsam-unstable-dev
 ```
 
