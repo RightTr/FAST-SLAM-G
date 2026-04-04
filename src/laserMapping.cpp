@@ -23,6 +23,7 @@
 #include "ros_utils.h"
 #include "map_optimization.h"
 #include "utility.h"
+#include "common_utils.h"
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -130,6 +131,10 @@ PathMsg path;
 OdomMsg odomAftMapped;
 QuaternionMsg geoQuat;
 PoseStampedMsg msg_body_pose;
+
+int    scan_frame_idx = 0;
+bool   scan_frame_dir_ready = false;
+std::ofstream scan_frame_pose_file;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu(new ImuProcess());
@@ -592,6 +597,31 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
             scan_wait_num = 0;
         }
     }
+}
+
+void save_scan_frame()
+{
+    if (create_directory(string(ROOT_DIR) + "SCAN_FRAMES/scans/")) {
+        ROS_PRINT_ERROR("Failed to create directory for scan frames!");
+        return;
+    }
+
+    // Save undistorted scan in LiDAR body frame
+    char idx_buf[16];
+    snprintf(idx_buf, sizeof(idx_buf), "%06d", scan_frame_idx);
+    string pcd_path = string(ROOT_DIR) + "SCAN_FRAMES/scans/" + idx_buf + ".pcd";
+    pcl::PCDWriter pcd_writer;
+    pcd_writer.writeBinary(pcd_path, *feats_undistort);
+
+    // Save LiDAR pose in world frame, TUM format: timestamp tx ty tz qx qy qz qw
+    V3D p_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+    auto q_lid = state_point.rot * state_point.offset_R_L_I;
+    scan_frame_pose_file << lidar_end_time << " "
+              << p_lid.x() << " " << p_lid.y() << " " << p_lid.z() << " "
+              << q_lid.coeffs()[0] << " " << q_lid.coeffs()[1] << " "
+              << q_lid.coeffs()[2] << " " << q_lid.coeffs()[3] << "\n";
+
+    scan_frame_idx++;
 }
 
 void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
@@ -1075,6 +1105,7 @@ int main(int argc, char** argv)
 
         if(reloc_en)
         {
+            // relocalization trigger
             if(relocalize_flag.load())
             {
                 feats_down_world->clear();
