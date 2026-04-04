@@ -15,7 +15,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include "preprocess.h"
-#include "ikdtree_public.hpp"
+#include "ikd-Tree/ikdtree_public.h"
 #include <reloc.h>
 #include <atomic>
 #include "posebuffer.h"

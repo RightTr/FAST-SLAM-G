@@ -30,7 +30,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
-#include "ikdtree_public.hpp"
+#include "ikd-Tree/ikdtree_public.h"
 
 using namespace gtsam;
 using namespace std;
