@@ -36,6 +36,7 @@ double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_pl
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
 bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   scan_frame_save_en = false;
 /**************************/
 
 bool feature_pub_en = false, effect_pub_en = false;
@@ -599,17 +600,12 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
     }
 }
 
-void save_scan_frame()
+void save_scan_frame(const string& scan_frames_dir)
 {
-    if (create_directory(string(ROOT_DIR) + "SCAN_FRAMES/scans/")) {
-        ROS_PRINT_ERROR("Failed to create directory for scan frames!");
-        return;
-    }
-
     // Save undistorted scan in LiDAR body frame
     char idx_buf[16];
     snprintf(idx_buf, sizeof(idx_buf), "%06d", scan_frame_idx);
-    string pcd_path = string(ROOT_DIR) + "SCAN_FRAMES/scans/" + idx_buf + ".pcd";
+    string pcd_path = scan_frames_dir + "scans/" + idx_buf + ".pcd";
     pcl::PCDWriter pcd_writer;
     pcd_writer.writeBinary(pcd_path, *feats_undistort);
 
@@ -972,6 +968,7 @@ int main(int argc, char** argv)
     rosparam_get("point_filter_num", p_pre->point_filter_num, 2);
     rosparam_get("feature_extract_enable", p_pre->feature_enabled, false);
     rosparam_get("runtime_pos_log_enable", runtime_pos_log, false);
+    rosparam_get("pcd_save/scan_frame_save_en", scan_frame_save_en, false);
     rosparam_get("mapping/extrinsic_est_en", extrinsic_est_en, true);
     rosparam_get("pcd_save/pcd_save_en", pcd_save_en, false);
     rosparam_get("pcd_save/interval", pcd_save_interval, -1);
@@ -1044,6 +1041,11 @@ int main(int argc, char** argv)
     FILE *fp;
     string pos_log_dir = root_dir + "/Log/pos_log.txt";
     fp = fopen(pos_log_dir.c_str(),"w");
+    
+    const string scan_frames_dir = root_dir + "/SCAN_FRAMES/";
+    create_directory(scan_frames_dir + "scans/");
+    string scan_frame_pose_path = scan_frames_dir + "poses.txt";
+    scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -1263,6 +1265,7 @@ int main(int argc, char** argv)
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect);
             if (feature_pub_en) publish_map(pubLaserCloudMap);
+            if (scan_frame_save_en)              save_scan_frame(scan_frames_dir);
 
             /*** Debug variables ***/
             if (runtime_pos_log)
