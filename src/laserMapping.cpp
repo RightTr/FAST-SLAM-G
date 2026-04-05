@@ -1071,7 +1071,7 @@ int main(int argc, char** argv)
     #ifdef USE_ROS1
     int odom_qos = 0;  // ROS1 ignores this parameter
     #else defined(USE_ROS2) 
-    auto odom_qos = rclcpp::QoS(rclcpp::KeepLast(50)).reliable();
+    auto odom_qos = rclcpp::QoS(10).best_effort(); // avoid latency caused by QoS reliability in ROS2
     #endif
     auto pubOdomAftMapped = create_publisher_qos<OdometryMsg>("/Odometry", odom_qos);
     auto pubPath = create_publisher_qos<PathMsg>("/path", odom_qos);
