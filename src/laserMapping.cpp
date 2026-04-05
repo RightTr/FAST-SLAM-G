@@ -16,7 +16,6 @@
 #include <pcl/io/pcd_io.h>
 #include "preprocess.h"
 #include "ikd-Tree/ikdtree_public.h"
-#include <reloc.h>
 #include <atomic>
 #include "posebuffer.h"
 #include <thread>
@@ -98,7 +97,7 @@ deque<ImuMsgConstPtr> imu_buffer;
 
 mutex mtx_reloc;
 condition_variable sig_reloc;
-RelocState reloc_state;
+Pose reloc_state;
 std::atomic<bool> relocalize_flag(false);
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
@@ -394,7 +393,7 @@ void reloc_cbk(const PoseStampedMsgConstPtr &msg_in)
     double qw = msg_in->pose.orientation.w;
     
     std::lock_guard<std::mutex> lock(mtx_reloc);
-    reloc_state = RelocState(x, y, z,
+    reloc_state = Pose(x, y, z,
                     qx, qy, qz, qw, timestamp);
     relocalize_flag.store(true); 
     ROS_PRINT_INFO("Reloc received: (%.3f, %.3f, %.3f), quat=(%.3f, %.3f, %.3f, %.3f)",
@@ -1115,9 +1114,9 @@ int main(int argc, char** argv)
                 state_ikfom state_point_reloc;
                 {
                     std::lock_guard<std::mutex> lock(mtx_reloc);
-                    state_point_reloc.pos = Eigen::Vector3d(reloc_state.x_, reloc_state.y_, reloc_state.z_);
-                    state_point_reloc.rot = Eigen::Quaterniond(reloc_state.qw_, reloc_state.qx_,
-                                                reloc_state.qy_, reloc_state.qz_);
+                    state_point_reloc.pos = Eigen::Vector3d(reloc_state._x, reloc_state._y, reloc_state._z);
+                    state_point_reloc.rot = Eigen::Quaterniond(reloc_state._qw, reloc_state._qx,
+                                                reloc_state._qy, reloc_state._qz);
                 }        
                 state_point_reloc.rot.normalize();
                 kf.reset(state_point_reloc);
