@@ -54,6 +54,7 @@ using LivoxCustomMsgConstPtr = livox_ros_driver2::CustomMsg::ConstPtr;
 using LivoxCustomMsg = livox_ros_driver2::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::PointCloud2::ConstPtr;
 using LivoxMsg = PointCloud2Msg;  // ROS1 Livox driver outputs PointCloud2
+using TransformStampedMsg = geometry_msgs::TransformStamped;
 
 #elif defined(USE_ROS2)
 #include <rclcpp/rclcpp.hpp>
@@ -105,6 +106,7 @@ using LivoxCustomMsgConstPtr = livox_ros_driver2::msg::CustomMsg::ConstPtr;
 using LivoxCustomMsg = livox_ros_driver2::msg::CustomMsg;
 using Pcl2MsgConstPtr = sensor_msgs::msg::PointCloud2::ConstPtr;
 using LivoxMsg = livox_ros_driver2::msg::CustomMsg;  // ROS2 Livox driver outputs CustomMsg
+using TransformStampedMsg = geometry_msgs::msg::TransformStamped;
 
 #endif
 

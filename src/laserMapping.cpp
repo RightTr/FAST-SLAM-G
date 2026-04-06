@@ -684,29 +684,8 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         msg.pose.pose.orientation.y = pose._qy;
         msg.pose.pose.orientation.z = pose._qz;
         msg.pose.pose.orientation.w = pose._qw;
-        ros_publish(pubOdomHighFreq, msg);
 
-#ifdef USE_ROS1
-        static tf::TransformBroadcaster br_hf;
-        tf::Transform transform;
-        tf::Quaternion q;
-        transform.setOrigin(tf::Vector3(
-            msg.pose.pose.position.x,
-            msg.pose.pose.position.y,
-            msg.pose.pose.position.z));
-        q.setW(msg.pose.pose.orientation.w);
-        q.setX(msg.pose.pose.orientation.x);
-        q.setY(msg.pose.pose.orientation.y);
-        q.setZ(msg.pose.pose.orientation.z);
-        transform.setRotation(q);
-        br_hf.sendTransform(
-            tf::StampedTransform(transform, msg.header.stamp,
-                                "camera_init", "body_hf"));
-#elif defined(USE_ROS2)
-        init_ros_node();
-        static std::shared_ptr<tf2_ros::TransformBroadcaster> br_hf;
-        br_hf = std::make_shared<tf2_ros::TransformBroadcaster>(get_ros_node());
-        geometry_msgs::msg::TransformStamped tf_msg;
+        TransformStampedMsg tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = "camera_init";
         tf_msg.child_frame_id = "body_hf";
@@ -714,8 +693,15 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         tf_msg.transform.translation.y = msg.pose.pose.position.y;
         tf_msg.transform.translation.z = msg.pose.pose.position.z;
         tf_msg.transform.rotation = msg.pose.pose.orientation;
-        br_hf->sendTransform(tf_msg);
+
+        ros_publish(pubOdomHighFreq, msg);
+
+#ifdef USE_ROS1
+        static tf::TransformBroadcaster br_hf;
+#elif defined(USE_ROS2)
+        static tf2_ros::TransformBroadcaster br_hf(get_ros_node());
 #endif
+        br_hf.sendTransform(tf_msg);
     }
 }
 
@@ -738,7 +724,6 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
     odomAftMapped.child_frame_id = "body";
     set_posestamp(odomAftMapped.pose);
     odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
-    ros_publish(pubOdomAftMapped, odomAftMapped);
 
     auto P = kf.get_P();
     for (int i = 0; i < 6; i ++)
@@ -752,36 +737,23 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
         odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
     }
 
-#ifdef USE_ROS1
-    static tf::TransformBroadcaster br;
-    tf::Transform                   transform;
-    tf::Quaternion                  q;
-    transform.setOrigin(tf::Vector3(odomAftMapped.pose.pose.position.x, \
-                                    odomAftMapped.pose.pose.position.y, \
-                                    odomAftMapped.pose.pose.position.z));
-    q.setW(odomAftMapped.pose.pose.orientation.w);
-    q.setX(odomAftMapped.pose.pose.orientation.x);
-    q.setY(odomAftMapped.pose.pose.orientation.y);
-    q.setZ(odomAftMapped.pose.pose.orientation.z);
-    transform.setRotation( q );
-    br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
-#elif defined(USE_ROS2)
-    init_ros_node();
-    static std::shared_ptr<tf2_ros::TransformBroadcaster> br;
-    br = std::make_shared<tf2_ros::TransformBroadcaster>(get_ros_node());
-
-    geometry_msgs::msg::TransformStamped tf_msg;
+    TransformStampedMsg tf_msg;
     tf_msg.header.stamp = odomAftMapped.header.stamp;
     tf_msg.header.frame_id = "camera_init";
     tf_msg.child_frame_id  = "body";
-
     tf_msg.transform.translation.x = odomAftMapped.pose.pose.position.x;
     tf_msg.transform.translation.y = odomAftMapped.pose.pose.position.y;
     tf_msg.transform.translation.z = odomAftMapped.pose.pose.position.z;
     tf_msg.transform.rotation = odomAftMapped.pose.pose.orientation;
 
-    br->sendTransform(tf_msg);
+    ros_publish(pubOdomAftMapped, odomAftMapped);
+
+#ifdef USE_ROS1
+    static tf::TransformBroadcaster br;
+#elif defined(USE_ROS2)
+    static tf2_ros::TransformBroadcaster br(get_ros_node());
 #endif
+    br.sendTransform(tf_msg);
 }
 
 void publish_path(const PathPublisher pubPath)
