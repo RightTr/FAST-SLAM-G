@@ -3,6 +3,7 @@
 #include <math.h>
 #include <thread>
 #include <fstream>
+#include <iomanip>
 #include <csignal>
 #include <unistd.h>
 #include <Python.h>
@@ -34,8 +35,8 @@ double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_ti
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
-bool   scan_frame_save_en = false;
+bool   runtime_pos_log = false, res_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   frame_save_en = false;
 /**************************/
 
 bool feature_pub_en = false, effect_pub_en = false;
@@ -58,7 +59,7 @@ double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
 double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0;
 int    effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
-int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
+int    iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, res_save_interval = -1, pcd_index = 0;
 bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_EKF_inited;
 std::atomic<bool> flg_exit(false);
@@ -135,6 +136,7 @@ PoseStampedMsg msg_body_pose;
 int    scan_frame_idx = 0;
 bool   scan_frame_dir_ready = false;
 std::ofstream scan_frame_pose_file;
+std::ofstream imu_pose_file;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu(new ImuProcess());
@@ -571,7 +573,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. noted that pcd save will influence the real-time performences **/
-    if (pcd_save_en)
+    if (res_save_en)
     {
         int size = feats_undistort->points.size();
         PointCloudXYZI::Ptr laserCloudWorld( \
@@ -586,7 +588,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
 
         static int scan_wait_num = 0;
         scan_wait_num ++;
-        if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
+        if (pcl_wait_save->size() > 0 && res_save_interval > 0  && scan_wait_num >= res_save_interval)
         {
             pcd_index ++;
             string all_points_dir(string(string(ROOT_DIR) + "PCD/scans_") + to_string(pcd_index) + string(".pcd"));
@@ -617,6 +619,22 @@ void save_scan_frame(const string& scan_frames_dir)
               << q_lid.coeffs()[2] << " " << q_lid.coeffs()[3] << "\n";
 
     scan_frame_idx++;
+}
+
+void save_imu_pose(PoseBuffer& pbuffer)
+{
+    while (ros_ok() && !flg_exit){
+        Pose pose;
+        if (!pbuffer.TryPop(pose))
+        {
+            usleep(1000);
+            continue;
+        }
+        imu_pose_file << pose._timestamp << " "
+            << pose._x << " " << pose._y << " " << pose._z << " "
+        << pose._qx << " " << pose._qy << " " << pose._qz << " " << pose._qw << "\n";
+        imu_pose_file.flush();
+    }
 }
 
 void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
@@ -761,18 +779,18 @@ void publish_path(const PathPublisher pubPath)
     set_posestamp(msg_body_pose);
     msg_body_pose.header.stamp = get_ros_time(lidar_end_time);
 
-        msg_body_pose.header.frame_id = "camera_init";
+    msg_body_pose.header.frame_id = "camera_init";
 
-        /*** if path is too large, rviz will crash ***/
-        static int jjj = 0;
-        jjj++;
+    /*** if path is too large, rviz will crash ***/
+    static int jjj = 0;
+    jjj++;
 
-        if (jjj % 10 == 0)
-        {
-            path.poses.push_back(msg_body_pose);
-            path.header.stamp = msg_body_pose.header.stamp;
-            ros_publish(pubPath, path);
-        }
+    if (jjj % 10 == 0)
+    {
+        path.poses.push_back(msg_body_pose);
+        path.header.stamp = msg_body_pose.header.stamp;
+        ros_publish(pubPath, path);
+    }
 }
 
 void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
@@ -939,10 +957,10 @@ int main(int argc, char** argv)
     rosparam_get("point_filter_num", p_pre->point_filter_num, 2);
     rosparam_get("feature_extract_enable", p_pre->feature_enabled, false);
     rosparam_get("runtime_pos_log_enable", runtime_pos_log, false);
-    rosparam_get("pcd_save/scan_frame_save_en", scan_frame_save_en, false);
+    rosparam_get("res_save/frame_save_en", frame_save_en, false);
     rosparam_get("mapping/extrinsic_est_en", extrinsic_est_en, true);
-    rosparam_get("pcd_save/pcd_save_en", pcd_save_en, false);
-    rosparam_get("pcd_save/interval", pcd_save_interval, -1);
+    rosparam_get("res_save/res_save_en", res_save_en, false);
+    rosparam_get("res_save/interval", res_save_interval, -1);
     rosparam_get("mapping/extrinsic_T", extrinT, std::vector<double>());
     rosparam_get("mapping/extrinsic_R", extrinR, std::vector<double>());
     rosparam_get("zupt/use_zupt",                use_zupt,                false);
@@ -1017,6 +1035,13 @@ int main(int argc, char** argv)
     create_directory(scan_frames_dir + "scans/");
     string scan_frame_pose_path = scan_frames_dir + "poses.txt";
     scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
+    scan_frame_pose_file << std::fixed << std::setprecision(9);
+
+    const string imu_poses_dir = root_dir + "/IMU_POSES/";
+    create_directory(imu_poses_dir);
+    string imu_pose_path = imu_poses_dir + "poses.txt";
+    imu_pose_file.open(imu_pose_path.c_str(), ios::out | ios::app);
+    imu_pose_file << std::fixed << std::setprecision(9);
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -1067,6 +1092,12 @@ int main(int argc, char** argv)
     {
         loopthread = std::thread(&loopClosureThread);
         globalthread = std::thread(&visualizeGlobalMapThread);
+    }
+
+    std::thread savethread;
+    if (frame_save_en)
+    {
+        savethread = std::thread(&save_imu_pose, std::ref(p_imu->savebuffer));
     }
 
 //------------------------------------------------------------------------------------------------------
@@ -1232,11 +1263,13 @@ int main(int argc, char** argv)
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
-            if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
+            if (scan_pub_en || res_save_en)      publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect);
             if (feature_pub_en) publish_map(pubLaserCloudMap);
-            if (scan_frame_save_en)              save_scan_frame(scan_frames_dir);
+            if (frame_save_en) {
+                save_scan_frame(scan_frames_dir);
+            }
 
             /*** Debug variables ***/
             if (runtime_pos_log)
@@ -1275,7 +1308,7 @@ int main(int argc, char** argv)
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. pcd save will largely influence the real-time performences **/
-    if (!flg_exit && pcl_wait_save->size() > 0 && pcd_save_en)
+    if (!flg_exit && pcl_wait_save->size() > 0 && res_save_en)
     {
         string file_name = string("scans.pcd");
         string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
@@ -1314,6 +1347,9 @@ int main(int argc, char** argv)
     }
     if (globalthread.joinable()) {
         globalthread.join();
+    }
+    if (savethread.joinable()) {
+        savethread.join();
     }
 
     return 0;
