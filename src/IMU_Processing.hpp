@@ -69,6 +69,7 @@ class ImuProcess
   double first_lidar_time;
   int lidar_type;
   PoseBuffer pbuffer;
+  PoseBuffer savebuffer;
 
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
@@ -137,6 +138,8 @@ void ImuProcess::Reset()
   init_iter_num     = 1;
   v_imu_.clear();
   IMUpose.clear();
+  pbuffer.Clear();
+  savebuffer.Clear();
   last_imu_.reset(new ImuMsg());
   cur_pcl_un_.reset(new PointCloudXYZI());
 }
@@ -425,9 +428,11 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();
-    pbuffer.Push(Pose(imu_state.pos.x(), imu_state.pos.y(), imu_state.pos.z(),
-                    imu_state.rot.x(), imu_state.rot.y(), imu_state.rot.z(), imu_state.rot.w(),
-                    tail_time));
+    Pose pose(imu_state.pos.x(), imu_state.pos.y(), imu_state.pos.z(),
+              imu_state.rot.x(), imu_state.rot.y(), imu_state.rot.z(), imu_state.rot.w(),
+              tail_time);
+    pbuffer.Push(pose);
+    savebuffer.Push(pose);
     angvel_last = angvel_avr - imu_state.bg;
     acc_s_last  = imu_state.rot * (acc_avr - imu_state.ba);
     for(int i=0; i<3; i++)

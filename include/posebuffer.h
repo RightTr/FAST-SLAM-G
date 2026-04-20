@@ -67,6 +67,12 @@ class PoseBuffer
             return queue_.Size();
         }
 
+        void Clear()
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            while (!queue_.IsEmpty()) queue_.Pop();
+        }
+
     private:
         Queue<Pose> queue_;   
         mutable std::mutex mtx_;
