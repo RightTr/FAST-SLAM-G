@@ -9,3 +9,4 @@ PCD/*.pcd
 .vscode
 package.xml
 SCAN_FRAMES
+.codex

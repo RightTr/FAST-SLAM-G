@@ -204,8 +204,6 @@ void ImuProcess::set_zupt_adaptive_params(double r_min, double r_max, double con
 // 1 = definitely static, 0 = definitely moving
 double ImuProcess::compute_static_confidence(const MeasureGroup &meas)
 {
-  if (meas.imu.empty()) { static_confidence_ = 0.0; return 0.0; }
-
   V3D acc_sum = Zero3d, gyro_sum = Zero3d;
   for (const auto &imu : meas.imu)
   {
@@ -373,11 +371,9 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
         pcl_end_time = meas.lidar_beg_time;
     }
 
-    /*** sort point clouds by offset time ***/
+  /*** sort point clouds by offset time ***/
   pcl_out = *(meas.lidar);
   sort(pcl_out.points.begin(), pcl_out.points.end(), time_list);
-  // cout<<"[ IMU Process ]: Process lidar from "<<pcl_beg_time<<" to "<<pcl_end_time<<", " \
-  //          <<meas.imu.size()<<" imu msgs from "<<imu_beg_time<<" to "<<imu_end_time<<endl;
 
   /*** Initialize IMU pose ***/
   state_ikfom imu_state = kf_state.get_x();
@@ -400,21 +396,18 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
 
     if (head_time < last_lidar_end_time_) continue;
 
-    angvel_avr<<0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
-                0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
-                0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
-    acc_avr   <<0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
+    angvel_avr << 0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
+                  0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
+                  0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
+    acc_avr << 0.5 * (head->linear_acceleration.x + tail->linear_acceleration.x),
                 0.5 * (head->linear_acceleration.y + tail->linear_acceleration.y),
                 0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
 
-    // fout_imu << setw(10) << head_time - first_lidar_time << " " << angvel_avr.transpose() << " " << acc_avr.transpose() << endl;
-
-    acc_avr     = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
+    acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
     if(head_time < last_lidar_end_time_)
     {
       dt = tail_time - last_lidar_end_time_;
-      // dt = tail_time - pcl_beg_time;
     }
     else
     {
@@ -534,6 +527,5 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
 
   t2 = omp_get_wtime();
   t3 = omp_get_wtime();
-  
-  // cout<<"[ IMU Process ]: Time: "<<t3 - t1<<endl;
+
 }

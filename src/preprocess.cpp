@@ -558,7 +558,7 @@ void Preprocess::airy_handler(const Pcl2MsgConstPtr& msg) {
     }
   }
   pub_func(pub_surf, pl_surf, msg->header.stamp);
-  // pub_func(pub_corn, pl_corn, msg->header.stamp);
+  pub_func(pub_corn, pl_corn, msg->header.stamp);
 }
 
 void Preprocess::unilidar_handler(const Pcl2MsgConstPtr &msg) {
