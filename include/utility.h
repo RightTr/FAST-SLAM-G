@@ -9,15 +9,6 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include "ros_utils.h"
 
-//Topics
-extern std::string gpsTopic;
-
-// GPS Settings
-extern bool useImuHeadingInitialization;
-extern bool useGpsElevation;
-extern float gpsCovThreshold;
-extern float poseCovThreshold;
-
 // CPU Params
 extern int numberOfCores;
 extern double mappingProcessInterval;

@@ -127,8 +127,7 @@ roslaunch fast_lio_sam mapping_airy.launch
 ## 📝 TODO List
 
 * [x] Full ROS2 adaptation
-* [ ] ROS2 adaptation Test
-* [ ] GNSS integration
+* [x] ROS2 adaptation Test
 
 ## 📚 Related Works
 

@@ -3,15 +3,6 @@
 
 using namespace std;
 
-//Topics
-string gpsTopic;
-
-// GPS Settings
-bool useImuHeadingInitialization;
-bool useGpsElevation;
-float gpsCovThreshold;
-float poseCovThreshold;
-
 // CPU Params
 int numberOfCores;
 double mappingProcessInterval;
@@ -41,15 +32,6 @@ float mappingICPSize;
 int ikdtreeSearchNeighborNum;
 
 void read_liosam_params() {
-
-    // Topics
-    rosparam_get("lio_sam/gpsTopic", gpsTopic, std::string("odometry/gps"));
-
-    // GPS settings
-    rosparam_get("lio_sam/useImuHeadingInitialization", useImuHeadingInitialization, false);
-    rosparam_get("lio_sam/useGpsElevation", useGpsElevation, false);
-    rosparam_get("lio_sam/gpsCovThreshold", gpsCovThreshold, 2.0f);
-    rosparam_get("lio_sam/poseCovThreshold", poseCovThreshold, 25.0f);
 
     // CPU parameters
     rosparam_get("lio_sam/numberOfCores", numberOfCores, 2);
