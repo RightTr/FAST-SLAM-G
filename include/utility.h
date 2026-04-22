@@ -11,7 +11,6 @@
 
 // CPU Params
 extern int numberOfCores;
-extern double mappingProcessInterval;
 
 // Surrounding map
 extern float surroundingkeyframeAddingDistThreshold; 

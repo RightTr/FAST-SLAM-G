@@ -5,7 +5,6 @@ using namespace std;
 
 // CPU Params
 int numberOfCores;
-double mappingProcessInterval;
 
 // Surrounding map
 float surroundingkeyframeAddingDistThreshold; 
@@ -35,7 +34,6 @@ void read_liosam_params() {
 
     // CPU parameters
     rosparam_get("lio_sam/numberOfCores", numberOfCores, 2);
-    rosparam_get("lio_sam/mappingProcessInterval", mappingProcessInterval, 0.15);
 
     // Keyframe Strategy
     rosparam_get("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0f);
