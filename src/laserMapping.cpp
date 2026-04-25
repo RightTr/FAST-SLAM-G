@@ -4,6 +4,7 @@
 #include <thread>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <csignal>
 #include <unistd.h>
 #include <Python.h>
@@ -65,6 +66,7 @@ bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_EKF_inited;
 std::atomic<bool> flg_exit(false);
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool   frontend_scan_pub_en = true;
 bool reloc_en = false;
 bool sam_enable = false;
 bool imu_flip = false;
@@ -82,6 +84,13 @@ int    zupt_inflate_start      = 200;
 // Adaptive LiDAR weight params
 double lidar_cov_static_scale  = 5.0;
 double lidar_residual_ref      = 0.05;
+double frontend_scan_angle_min = -M_PI;
+double frontend_scan_angle_max = M_PI;
+double frontend_scan_angle_increment = 0.00436;
+double frontend_scan_time = 0.1;
+double frontend_scan_range_min = 0.1;
+double frontend_scan_range_max = 100.0;
+string frontend_scan_topic = "/frontend_scan";
 
 const M3D IMU_FLIP_R = (M3D() <<
     1.0,  0.0,  0.0,
@@ -733,6 +742,54 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
     publish_count -= PUBFRAME_PERIOD;
 }
 
+template<typename ScanPublisherT>
+void publish_frontend_scan(
+    const ScanPublisherT &pubFrontendScan,
+    const PointCloudXYZI &cloud,
+    const double scan_stamp)
+{
+    if (!frontend_scan_pub_en || cloud.empty())
+        return;
+    if (ros_subscription_count(pubFrontendScan) == 0)
+        return;
+
+    LaserScanMsg scan_msg;
+    scan_msg.header.stamp = get_ros_time(scan_stamp);
+    scan_msg.header.frame_id = lidarFrame;
+    scan_msg.angle_min = static_cast<float>(frontend_scan_angle_min);
+    scan_msg.angle_max = static_cast<float>(frontend_scan_angle_max);
+    scan_msg.angle_increment = static_cast<float>(frontend_scan_angle_increment);
+    scan_msg.scan_time = static_cast<float>(frontend_scan_time);
+    scan_msg.range_min = static_cast<float>(frontend_scan_range_min);
+    scan_msg.range_max = static_cast<float>(frontend_scan_range_max);
+
+    const int beam_count = std::max(1, static_cast<int>(
+        std::ceil((scan_msg.angle_max - scan_msg.angle_min) / scan_msg.angle_increment)));
+    scan_msg.ranges.assign(beam_count, std::numeric_limits<float>::infinity());
+
+    for (const auto &point : cloud.points)
+    {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+            continue;
+
+        const float range = std::hypot(point.x, point.y);
+        if (range < scan_msg.range_min || range > scan_msg.range_max)
+            continue;
+
+        const float angle = std::atan2(point.y, point.x);
+        if (angle < scan_msg.angle_min || angle > scan_msg.angle_max)
+            continue;
+
+        const int index = static_cast<int>((angle - scan_msg.angle_min) / scan_msg.angle_increment);
+        if (index < 0 || index >= beam_count)
+            continue;
+
+        scan_msg.ranges[index] = std::min(scan_msg.ranges[index], range);
+    }
+
+    ros_publish(pubFrontendScan, scan_msg);
+}
+
 void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
 {
     PointCloudXYZI::Ptr laserCloudWorld( \
@@ -1011,8 +1068,16 @@ int main(int argc, char** argv)
     rosparam_get("publish/scan_publish_en", scan_pub_en, true);
     rosparam_get("publish/dense_publish_en", dense_pub_en, true);
     rosparam_get("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
+    rosparam_get("publish/frontend_scan_pub_en", frontend_scan_pub_en, true);
     rosparam_get("publish/feature_pub_en", feature_pub_en, false);
     rosparam_get("publish/effect_pub_en", effect_pub_en, false);
+    rosparam_get("frontend_scan/topic", frontend_scan_topic, std::string("/frontend_scan"));
+    rosparam_get("pointcloud_to_laserscan/angle_min", frontend_scan_angle_min, -M_PI);
+    rosparam_get("pointcloud_to_laserscan/angle_max", frontend_scan_angle_max, M_PI);
+    rosparam_get("pointcloud_to_laserscan/angle_increment", frontend_scan_angle_increment, 0.00436);
+    rosparam_get("pointcloud_to_laserscan/scan_time", frontend_scan_time, 0.1);
+    rosparam_get("pointcloud_to_laserscan/range_min", frontend_scan_range_min, 0.1);
+    rosparam_get("pointcloud_to_laserscan/range_max", frontend_scan_range_max, 100.0);
     rosparam_get("reloc/reloc_en", reloc_en, false);
     rosparam_get("max_iteration", NUM_MAX_ITERATIONS, 4);
     rosparam_get("map_file_path", map_file_path, std::string(""));
@@ -1153,6 +1218,12 @@ int main(int argc, char** argv)
     auto pubLaserCloudEffect = create_publisher<PointCloud2Msg>("/cloud_effected", 100000);
     auto pubLaserCloudMap = create_publisher<PointCloud2Msg>("/Laser_map", 100000);
     #ifdef USE_ROS1
+    auto pubFrontendScan = create_publisher<LaserScanMsg>(frontend_scan_topic, 50);
+    #elif defined(USE_ROS2)
+    auto frontend_scan_qos = rclcpp::SensorDataQoS();
+    auto pubFrontendScan = create_publisher_qos<LaserScanMsg>(frontend_scan_topic, frontend_scan_qos);
+    #endif
+    #ifdef USE_ROS1
     int odom_qos = 0;  // ROS1 ignores this parameter
     #elif defined(USE_ROS2)
     auto odom_qos = rclcpp::QoS(10).best_effort(); // avoid latency caused by QoS reliability in ROS2
@@ -1229,6 +1300,7 @@ int main(int argc, char** argv)
                 first_lidar_time = Measures.lidar_beg_time;
                 p_imu->first_lidar_time = first_lidar_time;
                 flg_first_scan = false;
+                publish_frontend_scan(pubFrontendScan, *Measures.lidar, Measures.lidar_end_time);
                 continue;
             }
 
@@ -1384,6 +1456,7 @@ int main(int argc, char** argv)
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
+            publish_frontend_scan(pubFrontendScan, *feats_undistort, lidar_end_time);
             if (scan_pub_en || res_save_en)      publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect);

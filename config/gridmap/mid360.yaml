@@ -39,8 +39,8 @@ lio_sam:
   mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
 
   # Surrounding map
-  surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
-  surroundingkeyframeAddingAngleThreshold: 0.2  # radians, regulate keyframe adding threshold
+  surroundingkeyframeAddingDistThreshold: 0.5   # meters, regulate keyframe adding threshold
+  surroundingkeyframeAddingAngleThreshold: 0.1  # radians, regulate keyframe adding threshold
   surroundingKeyframeDensity: 2.0               # meters, downsample surrounding keyframe poses
   surroundingKeyframeSearchRadius: 50.0         # meters, within n meters scan-to-map optimization (when loop closure disabled)
 
@@ -63,6 +63,10 @@ publish:
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+    frontend_scan_pub_en: true   # true: publish realtime frontend scan on a separate topic
+
+frontend_scan:
+    topic: "/frontend_scan"
 
 res_save:
     res_save_en: true
@@ -92,25 +96,25 @@ zupt:
 
 occupancy_map:
     enabled: true
-    input_type: "laserscan"
-    input_topic: "/scan"
+    input_type: "pointcloud"
+    input_topic: "lio_sam/mapping/cloud_global_dense"
     output_topic: "/map"
     map_frame: "map"
-    resolution: 0.03
+    resolution: 0.05
     padding: 5.0
-    obstacle_min_height: -0.30
-    obstacle_max_height: 0.80
+    obstacle_min_height: -1.00
+    obstacle_max_height: 1.20
     min_points_per_cell: 1
     fill_free_space: true
 
 pointcloud_to_laserscan:
-    enabled: true
+    enabled: false
     input_topic: "lio_sam/mapping/cloud_global_dense"
     output_topic: "/scan"
     target_frame: "map"
     transform_tolerance: 0.05
-    min_height: -0.50
-    max_height: 0.80
+    min_height: -1.00
+    max_height: 1.20
     angle_min: -3.14159
     angle_max: 3.14159
     angle_increment: 0.00436

@@ -182,6 +182,7 @@ if(USE_ROS2)
     FILES 
     rviz_cfg/loam_ros2.rviz
     rviz_cfg/sam_ros2.rviz
+    rviz_cfg/grid_ros2.rviz
     DESTINATION share/${PROJECT_NAME}/rviz_cfg
   )
   install(TARGETS fastlio_mapping cloud_to_occupancy

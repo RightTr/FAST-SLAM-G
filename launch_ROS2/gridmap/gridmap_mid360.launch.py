@@ -25,7 +25,7 @@ def load_ros1_yaml_as_params(yaml_file_path):
 
 def generate_launch_description():
     package_share = get_package_share_directory("fast_lio_sam")
-    rviz_cfg = os.path.join(package_share, "rviz_cfg", "sam_ros2.rviz")
+    rviz_cfg = os.path.join(package_share, "rviz_cfg", "grid_ros2.rviz")
     config_file = os.path.join(package_share, "config", "gridmap", "mid360.yaml")
     yaml_params = load_ros1_yaml_as_params(config_file)
 
@@ -34,8 +34,8 @@ def generate_launch_description():
         {"feature_extract_enable": False},
         {"point_filter_num": 1},
         {"max_iteration": 3},
-        {"filter_size_surf": 0.5},
-        {"filter_size_map": 0.5},
+        {"filter_size_surf": 0.1},
+        {"filter_size_map": 0.1},
         {"cube_side_length": 1000.0},
         {"runtime_pos_log_enable": False},
         yaml_params,
