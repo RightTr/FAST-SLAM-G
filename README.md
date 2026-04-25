@@ -1,6 +1,6 @@
-# FAST-LIO-SAM
+# FAST-SLAM-G
 
-A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**.
+A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, and further provides a **GridMap** projection pipeline for navigation, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**.
 
 ## 🧩 Contributions
 
@@ -13,6 +13,8 @@ A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency
 * Manual initial pose setting for relocalization
 
 * Stationary detection and adaptive weight handling between LiDAR update scans and ZUPT
+
+* Online GridMap projection from optimized global point cloud to 2D `OccupancyGrid`
 
 * Support for RoboSense LiDARs, Unilidar LiDARs
 
@@ -55,10 +57,21 @@ git submodule update --init --recursive
 ### LIO-SAM-style Backend
 
 ```bash
-cd fastlio_ws 
+cd fastlio_ws
 source devel/setup.bash
 # e.g.
 roslaunch fast_lio_sam sam_airy.launch
+```
+
+### GridMap Pipeline
+
+For navigation-oriented usage, the recommended entry is the GridMap pipeline. It keeps the optimized 3D map and the exported 2D navigation map in the same SLAM system instead of running another online 2D SLAM node.
+
+```bash
+# ROS2
+cd fastlio_ws
+source install/setup.bash
+ros2 launch fast_lio_sam gridmap_mid360.launch.py
 ```
 
 ### Relocalization
@@ -70,13 +83,13 @@ Run relocalization mode:
 ```bash
 # e.g.
 # ROS1
-cd fastlio_ws 
+cd fastlio_ws
 source devel/setup.bash
 roslaunch fast_lio_sam reloc_mid360.launch
 # Publish geometry_msgs::PoseStamped to the /reloc_topic
 
 # ROS2
-cd fastlio_ws 
+cd fastlio_ws
 source install/setup.bash
 ros2 launch fast_lio_sam reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
@@ -115,6 +128,16 @@ zupt:
 
 Subscribe the topic */OdometryHighFreq* to receive high frequency odometry output via IMU propagation between LiDAR scans.
 
+### GridMap Notes
+
+The GridMap node projects the optimized global point cloud to `/map` as a 2D `OccupancyGrid`.
+
+The current design assumes:
+
+* the global point cloud comes from the backend-optimized map
+
+* the 2D navigation map should stay consistent with the 3D map
+
 ### Extended LiDAR support
 
 Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy) and Unilidar LiDARs (e.g., Unilidar L2). Check the related files in ./config and ./launch folder.
@@ -128,6 +151,8 @@ roslaunch fast_lio_sam mapping_airy.launch
 
 * [x] Full ROS2 adaptation
 * [x] ROS2 adaptation Test
+* [x] GridMap projection pipeline
+* [ ] Incremental GridMap update optimization
 
 ## 📚 Related Works
 
