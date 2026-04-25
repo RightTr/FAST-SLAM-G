@@ -12,6 +12,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Path.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -30,6 +31,7 @@
 using PointCloud2Msg = sensor_msgs::PointCloud2;
 using PathMsg = nav_msgs::Path;
 using OdometryMsg = nav_msgs::Odometry;
+using OccupancyGridMsg = nav_msgs::OccupancyGrid;
 using OdometryMsgConstPtr = nav_msgs::Odometry::ConstPtr;
 using OdomMsg = nav_msgs::Odometry;
 using Pose6D = fast_lio_sam::Pose6D;
@@ -41,6 +43,7 @@ using ImuMsg = sensor_msgs::Imu;
 using PathPublisher = ros::Publisher;
 using OdomPublisher = ros::Publisher;
 using Pcl2Publisher = ros::Publisher;
+using OccupancyGridPublisher = ros::Publisher;
 using MarkerArrayPublisher = ros::Publisher;
 using OdomSubscriber = ros::Subscriber;
 using TimeType = ros::Time;
@@ -62,6 +65,7 @@ using TransformStampedMsg = geometry_msgs::TransformStamped;
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -82,6 +86,7 @@ using TransformStampedMsg = geometry_msgs::TransformStamped;
 using PointCloud2Msg = sensor_msgs::msg::PointCloud2;
 using PathMsg = nav_msgs::msg::Path;
 using OdometryMsg = nav_msgs::msg::Odometry;
+using OccupancyGridMsg = nav_msgs::msg::OccupancyGrid;
 using OdometryMsgConstPtr = nav_msgs::msg::Odometry::ConstSharedPtr;
 using OdomMsg = nav_msgs::msg::Odometry;
 using Pose6D = fast_lio_sam::msg::Pose6D;
@@ -93,6 +98,7 @@ using ImuMsg = sensor_msgs::msg::Imu;
 using PathPublisher = rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr;
 using OdomPublisher = rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr;
 using Pcl2Publisher = rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr;
+using OccupancyGridPublisher = rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr;
 using MarkerArrayPublisher = rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr;
 using OdomSubscriber = rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr;
 using TimeType = rclcpp::Time;

@@ -103,8 +103,11 @@ if(USE_ROS1)
   add_executable(fastlio_mapping src/laserMapping.cpp 
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp 
     src/utility.cpp src/mapOptimization.cpp)
+  add_executable(cloud_to_occupancy src/cloud_to_Occupancy.cpp)
   add_dependencies(fastlio_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+  add_dependencies(cloud_to_occupancy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
   target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam)
+  target_link_libraries(cloud_to_occupancy ${catkin_LIBRARIES} ${PCL_LIBRARIES})
   target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 endif()
 
@@ -132,7 +135,7 @@ if(USE_ROS2)
     src/preprocess.cpp
     src/utility.cpp
     src/mapOptimization.cpp)
-  add_executable(cloud_to_occupancy src/cloud_to_occupancy.cpp)
+  add_executable(cloud_to_occupancy src/cloud_to_Occupancy.cpp)
   ament_target_dependencies(fastlio_mapping
     rclcpp
     sensor_msgs
@@ -153,7 +156,9 @@ if(USE_ROS2)
     PCL
   )
   target_link_libraries(fastlio_mapping "${cpp_typesupport_target}")
+  target_link_libraries(cloud_to_occupancy "${cpp_typesupport_target}")
   target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} gtsam)
+  target_link_libraries(cloud_to_occupancy ${PCL_LIBRARIES})
   target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
   install(
   DIRECTORY
