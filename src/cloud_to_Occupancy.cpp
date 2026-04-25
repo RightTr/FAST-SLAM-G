@@ -20,8 +20,7 @@ double resolution = 0.1;
 double padding = 5.0;
 double obstacle_min_height = -0.3;
 double obstacle_max_height = 1.5;
-std::string input_topic = "lio_sam/mapping/cloud_global";
-std::string input_type = "pointcloud";
+std::string input_topic = "lio_sam/mapping/cloud_global_2d";
 std::string output_topic = "/map";
 std::string map_frame = "map";
 
@@ -115,36 +114,10 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
     publishOccupancyFromHits(msg->header.stamp, hits);
 }
 
-void laserScanCallback(const LaserScanMsgConstPtr& msg)
-{
-    std::vector<std::pair<double, double>> hits;
-    hits.reserve(msg->ranges.size());
-
-    double angle = msg->angle_min;
-    for (const auto &range : msg->ranges) {
-        if (!std::isfinite(range)) {
-            angle += msg->angle_increment;
-            continue;
-        }
-        if (range < msg->range_min || range > msg->range_max) {
-            angle += msg->angle_increment;
-            continue;
-        }
-
-        hits.emplace_back(
-            static_cast<double>(range) * std::cos(angle),
-            static_cast<double>(range) * std::sin(angle));
-        angle += msg->angle_increment;
-    }
-
-    publishOccupancyFromHits(msg->header.stamp, hits);
-}
-
 void readParams()
 {
     rosparam_get("occupancy_map/enabled", enabled, true);
-    rosparam_get("occupancy_map/input_type", input_type, std::string("pointcloud"));
-    rosparam_get("occupancy_map/input_topic", input_topic, std::string("lio_sam/mapping/cloud_global"));
+    rosparam_get("occupancy_map/input_topic", input_topic, std::string("lio_sam/mapping/cloud_global_2d"));
     rosparam_get("occupancy_map/output_topic", output_topic, std::string("/map"));
     rosparam_get("occupancy_map/resolution", resolution, 0.10);
     rosparam_get("occupancy_map/padding", padding, 5.0);
@@ -177,33 +150,15 @@ int main(int argc, char** argv)
     if (!enabled) {
         ROS_PRINT_INFO("cloud_to_occupancy disabled");
     } else {
-        if (input_type == "laserscan") {
-#ifdef USE_ROS1
-            auto subScan = create_subscriber<LaserScanMsg>(input_topic, 1, laserScanCallback);
-#elif defined(USE_ROS2)
-            auto scan_qos = rclcpp::SensorDataQoS();
-            auto subScan = create_subscriber_qos<LaserScanMsg>(input_topic, scan_qos, laserScanCallback);
-#endif
-            ROS_PRINT_INFO(
-                "cloud_to_occupancy subscribed to laserscan %s, publishing %s in frame %s",
-                input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
+        auto subCloud = create_subscriber<PointCloud2Msg>(input_topic, 1, cloudCallback);
+        ROS_PRINT_INFO(
+            "cloud_to_occupancy subscribed to pointcloud %s, publishing %s in frame %s",
+            input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
 
-            RateType rate(100.0);
-            while (ros_ok()) {
-                spin_once();
-                rate.sleep();
-            }
-        } else {
-            auto subCloud = create_subscriber<PointCloud2Msg>(input_topic, 1, cloudCallback);
-            ROS_PRINT_INFO(
-                "cloud_to_occupancy subscribed to pointcloud %s, publishing %s in frame %s",
-                input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
-
-            RateType rate(100.0);
-            while (ros_ok()) {
-                spin_once();
-                rate.sleep();
-            }
+        RateType rate(100.0);
+        while (ros_ok()) {
+            spin_once();
+            rate.sleep();
         }
     }
 

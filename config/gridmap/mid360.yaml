@@ -93,7 +93,6 @@ zupt:
 
 occupancy_map:
     enabled: true
-    input_type: "pointcloud"
     input_topic: "lio_sam/mapping/cloud_global_2d"
     output_topic: "/map"
     map_frame: "map"
