@@ -7,7 +7,9 @@ extern Eigen::Matrix3d rotationLidarToIMU;
 
 void MapOptimizationInit();
 
-void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort);
+void saveKeyFramesAndFactor(
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_down_body,
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort);
 
 void correctPoses();
 

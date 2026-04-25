@@ -69,7 +69,6 @@ Values initialEstimate;
 Values optimizedEstimate;
 ISAM2 *isam;
 Values isamCurrentEstimate;
-Eigen::MatrixXd poseCovariance;
 
 Pcl2Publisher pubKeyPoses;
 PathPublisher pubPath;
@@ -193,6 +192,29 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::
     return cloudOut;
 }
 
+pcl::PointCloud<PointType>::Ptr transformPointCloud2D(
+    pcl::PointCloud<PointType>::Ptr cloudIn,
+    PointTypePose* transformIn)
+{
+    pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+    const int cloudSize = cloudIn->size();
+    cloudOut->resize(cloudSize);
+
+    const float cos_yaw = std::cos(transformIn->yaw);
+    const float sin_yaw = std::sin(transformIn->yaw);
+
+    #pragma omp parallel for num_threads(numberOfCores)
+    for (int i = 0; i < cloudSize; ++i)
+    {
+        const auto &pointFrom = cloudIn->points[i];
+        cloudOut->points[i].x = cos_yaw * pointFrom.x - sin_yaw * pointFrom.y + transformIn->x;
+        cloudOut->points[i].y = sin_yaw * pointFrom.x + cos_yaw * pointFrom.y + transformIn->y;
+        cloudOut->points[i].z = 0.0f;
+        cloudOut->points[i].intensity = pointFrom.intensity;
+    }
+    return cloudOut;
+}
+
 void allocateMemory()
 {
     cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
@@ -222,6 +244,81 @@ PointType transformFrontendPointToImu(const pcl::PointXYZINormal &pt)
     return point;
 }
 
+bool keepDenseKeyframePoint(const PointType &point)
+{
+    if (!scanSliceEnable)
+        return true;
+    return point.z >= scanSliceMinZ && point.z <= scanSliceMaxZ;
+}
+
+PointType projectDenseKeyframePoint2D(const PointType &point)
+{
+    PointType projected = point;
+    projected.z = 0.0f;
+    return projected;
+}
+
+pcl::PointCloud<PointType>::Ptr projectDenseKeyframeToScan2D(
+    const pcl::PointCloud<PointType>::Ptr &cloudIn)
+{
+    pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+    if (cloudIn->empty())
+        return cloudOut;
+
+    const int beam_count = std::max(
+        1,
+        static_cast<int>(std::ceil(
+            (scanAngleMax - scanAngleMin) /
+            scanAngleIncrement)));
+
+    std::vector<float> best_ranges(beam_count, std::numeric_limits<float>::infinity());
+    std::vector<float> best_x(beam_count, 0.0f);
+    std::vector<float> best_y(beam_count, 0.0f);
+    std::vector<float> best_intensity(beam_count, 0.0f);
+
+    for (const auto &point : cloudIn->points)
+    {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y))
+            continue;
+
+        const float range = std::hypot(point.x, point.y);
+        if (range < scanRangeMin || range > scanRangeMax)
+            continue;
+
+        const float angle = std::atan2(point.y, point.x);
+        if (angle < scanAngleMin || angle > scanAngleMax)
+            continue;
+
+        const int index = static_cast<int>(
+            (angle - scanAngleMin) / scanAngleIncrement);
+        if (index < 0 || index >= beam_count)
+            continue;
+
+        if (range < best_ranges[index])
+        {
+            best_ranges[index] = range;
+            best_x[index] = point.x;
+            best_y[index] = point.y;
+            best_intensity[index] = point.intensity;
+        }
+    }
+
+    cloudOut->reserve(beam_count);
+    for (int i = 0; i < beam_count; ++i)
+    {
+        if (!std::isfinite(best_ranges[i]))
+            continue;
+
+        PointType point;
+        point.x = best_x[i];
+        point.y = best_y[i];
+        point.z = 0.0f;
+        point.intensity = best_intensity[i];
+        cloudOut->push_back(point);
+    }
+    return cloudOut;
+}
+
 void MapOptimizationInit()
 {
     ISAM2Params parameters;
@@ -230,7 +327,6 @@ void MapOptimizationInit()
     isam = new ISAM2(parameters);
 
     init_ros_node();
-    
     pubKeyPoses = create_publisher<PointCloud2Msg>("lio_sam/trajectory", 1);
     pubPath = create_publisher<PathMsg>("lio_sam/mapping/path", 1);
     pubLaserCloudGlobal = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global", 1);
@@ -455,7 +551,9 @@ void updatePath(const PointTypePose& pose_in)
     globalPath.poses.push_back(pose_stamped);
 }
 
-void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort)
+void saveKeyFramesAndFactor(
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_down_body,
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort)
 {
     if (!cloudKeyPoses3D->points.empty() && saveFrame() == false)
         return;
@@ -516,7 +614,7 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
     // cout << "****************************************************" << endl;
     // cout << "Pose covariance:" << endl;
     // cout << isam->marginalCovariance(isamCurrentEstimate.size()-1) << endl << endl;
-    poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);
+    // poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);
 
     // save updated transform
     transformTobeMapped[0] = latestEstimate.rotation().roll();
@@ -528,14 +626,20 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
 
     pcl::PointCloud<PointType>::Ptr featCloudKeyFrame(new pcl::PointCloud<PointType>());
     pcl::PointCloud<PointType>::Ptr denseCloudKeyFrame(new pcl::PointCloud<PointType>());
-    featCloudKeyFrame->reserve(feats_undistort->points.size());
+    featCloudKeyFrame->reserve(feats_down_body->points.size());
     denseCloudKeyFrame->reserve(feats_undistort->points.size());
 
-    for (const auto &pt : feats_undistort->points) {
-        PointType point = transformFrontendPointToImu(pt);
-        featCloudKeyFrame->push_back(point);
-        denseCloudKeyFrame->push_back(point);
+    for (const auto &pt : feats_down_body->points) {
+        featCloudKeyFrame->push_back(transformFrontendPointToImu(pt));
     }
+
+    for (const auto &pt : feats_undistort->points) {
+        const PointType point = transformFrontendPointToImu(pt);
+        if (keepDenseKeyframePoint(point))
+            denseCloudKeyFrame->push_back(projectDenseKeyframePoint2D(point));
+    }
+
+    denseCloudKeyFrame = projectDenseKeyframeToScan2D(denseCloudKeyFrame);
 
     featCloudKeyFrames.push_back(featCloudKeyFrame);
     denseCloudKeyFrames.push_back(denseCloudKeyFrame);
@@ -547,9 +651,6 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
         ikdtreeHistoryKeyPoses->Add_Point(thisPose3D);
     }
 
-    // Publish immediately when a new keyframe is added so the first keyframe can
-    // generate a LaserScan without waiting for the slow visualization thread.
-    publishGlobalMap();
 }
 
 void ReconstructIkdTree()
@@ -739,7 +840,7 @@ void publishGlobalMap() {
             *globalMapKeyFrames += *transformPointCloud(featCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
         }
         if (need_dense_global) {
-            *globalMapDenseKeyFrames += *transformPointCloud(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+            *globalMapDenseKeyFrames += *transformPointCloud2D(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
         }
     }
     if (need_sparse_global) {

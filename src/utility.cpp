@@ -36,12 +36,15 @@ float globalMapVisualizationLeafSize;
 
 float mappingICPSize;
 
-bool denseKeyframeSliceEnable;
-float denseKeyframeSliceMinZ;
-float denseKeyframeSliceMaxZ;
-bool denseKeyframeSliceFlatten;
-bool denseKeyframeSliceUseForRecentCloud;
-bool denseKeyframeSliceUseForGlobalMap;
+bool scanSliceEnable;
+float scanSliceMinZ;
+float scanSliceMaxZ;
+float scanAngleMin;
+float scanAngleMax;
+float scanAngleIncrement;
+float scanTime;
+float scanRangeMin;
+float scanRangeMax;
 
 int ikdtreeSearchNeighborNum;
 bool publishMapToOdomTf;
@@ -81,11 +84,14 @@ void read_liosam_params() {
     rosparam_get("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0f);
 
     rosparam_get("lio_sam/mappingICPSize", mappingICPSize, 0.2f);
-    rosparam_get("lio_sam/denseKeyframeSliceEnable", denseKeyframeSliceEnable, true);
-    rosparam_get("lio_sam/denseKeyframeSliceMinZ", denseKeyframeSliceMinZ, -1.5f);
-    rosparam_get("lio_sam/denseKeyframeSliceMaxZ", denseKeyframeSliceMaxZ, 0.8f);
-    rosparam_get("lio_sam/denseKeyframeSliceFlatten", denseKeyframeSliceFlatten, false);
-    rosparam_get("lio_sam/denseKeyframeSliceUseForRecentCloud", denseKeyframeSliceUseForRecentCloud, true);
-    rosparam_get("lio_sam/denseKeyframeSliceUseForGlobalMap", denseKeyframeSliceUseForGlobalMap, true);
+    rosparam_get("pointcloud_to_laserscan/slice_enable", scanSliceEnable, true);
+    rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, -1.5f);
+    rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, 0.8f);
+    rosparam_get("pointcloud_to_laserscan/angle_min", scanAngleMin, -3.14159f);
+    rosparam_get("pointcloud_to_laserscan/angle_max", scanAngleMax, 3.14159f);
+    rosparam_get("pointcloud_to_laserscan/angle_increment", scanAngleIncrement, 0.00436f);
+    rosparam_get("pointcloud_to_laserscan/scan_time", scanTime, 0.1f);
+    rosparam_get("pointcloud_to_laserscan/range_min", scanRangeMin, 0.1f);
+    rosparam_get("pointcloud_to_laserscan/range_max", scanRangeMax, 100.0f);
     rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
 }
