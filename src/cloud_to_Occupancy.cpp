@@ -152,10 +152,7 @@ void readParams()
     rosparam_get("occupancy_map/obstacle_max_height", obstacle_max_height, 1.50);
     rosparam_get("occupancy_map/min_points_per_cell", min_points_per_cell, 1);
     rosparam_get("occupancy_map/fill_free_space", fill_free_space, true);
-
-    std::string default_map_frame = "map";
-    rosparam_get("lio_sam/mapFrame", default_map_frame, std::string("map"));
-    rosparam_get("occupancy_map/map_frame", map_frame, default_map_frame);
+    rosparam_get("occupancy_map/map_frame", map_frame, std::string("map"));
 }
 
 int main(int argc, char** argv)

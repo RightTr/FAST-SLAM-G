@@ -1,6 +1,11 @@
 common:
     lid_topic:  "/livox/lidar"
     imu_topic:  "/livox/imu"
+    lidarFrame: "lidar"
+    baselinkFrame: "base_link"
+    highFrequencyBaselinkFrame: "base_link_hf"
+    odometryFrame: "odom"
+    mapFrame: "map"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                 # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
@@ -25,15 +30,6 @@ mapping:
     extrinsic_T: [-0.009673, -0.037003, 0.047590]
 
 lio_sam:
-
-  # Frames
-  lidarFrame: "lidar"
-  baselinkFrame: "base_link"
-  highFrequencyBaselinkFrame: "base_link_hf"
-  odometryFrame: "odom"
-  mapFrame: "map"
-  publishMapToOdomTf: true
-
   # CPU Params
   numberOfCores: 4                              # number of cores for mapping optimization
   mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
@@ -75,7 +71,7 @@ res_save:
                                 # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 zupt:
-    use_zupt: false                    # enable adaptive zero velocity update
+    use_zupt: true                    # enable adaptive zero velocity update
     zupt_acc_var_threshold:  0.0001   # (m/s²)² per-axis acc variance → full-confidence threshold
     zupt_gyro_var_threshold: 0.00001  # (rad/s)² per-axis gyro variance → full-confidence threshold
 
@@ -98,7 +94,7 @@ zupt:
 occupancy_map:
     enabled: true
     input_type: "pointcloud"
-    input_topic: "lio_sam/mapping/cloud_global_dense"
+    input_topic: "lio_sam/mapping/cloud_global_2d"
     output_topic: "/map"
     map_frame: "map"
     resolution: 0.05
@@ -109,11 +105,6 @@ occupancy_map:
     fill_free_space: true
 
 pointcloud_to_laserscan:
-    enabled: false
-    input_topic: "lio_sam/mapping/cloud_global_dense"
-    output_topic: "/scan"
-    target_frame: "map"
-    transform_tolerance: 0.05
     slice_enable: true
     min_height: -0.5
     max_height: 1.20
@@ -123,5 +114,3 @@ pointcloud_to_laserscan:
     scan_time: 0.1
     range_min: 0.1
     range_max: 100.0
-    use_inf: true
-    inf_epsilon: 1.0

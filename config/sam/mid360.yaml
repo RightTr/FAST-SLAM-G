@@ -1,6 +1,11 @@
 common:
     lid_topic:  "/livox/lidar"
     imu_topic:  "/livox/imu"
+    lidarFrame: "lidar"
+    baselinkFrame: "base_link"
+    highFrequencyBaselinkFrame: "base_link_hf"
+    odometryFrame: "odom"
+    mapFrame: "map"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                 # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
@@ -51,6 +56,7 @@ lio_sam:
 
 publish:
     path_en:  false
+    use_lidar_frame: true      # true: publish LiDAR-frame pose/scan, including odom TF child frame
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame

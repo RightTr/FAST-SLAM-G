@@ -1,5 +1,4 @@
 from launch import LaunchDescription
-from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -57,33 +56,6 @@ def generate_launch_description():
         parameters=[yaml_params],
     )
 
-    pointcloud_to_laserscan = Node(
-        package="pointcloud_to_laserscan",
-        executable="pointcloud_to_laserscan_node",
-        name="pointcloud_to_laserscan",
-        output="screen",
-        condition=IfCondition(str(yaml_params["pointcloud_to_laserscan/enabled"]).lower()),
-        parameters=[{
-            "queue_size": 10,
-            "target_frame": yaml_params["pointcloud_to_laserscan/target_frame"],
-            "transform_tolerance": yaml_params["pointcloud_to_laserscan/transform_tolerance"],
-            "min_height": yaml_params["pointcloud_to_laserscan/min_height"],
-            "max_height": yaml_params["pointcloud_to_laserscan/max_height"],
-            "angle_min": yaml_params["pointcloud_to_laserscan/angle_min"],
-            "angle_max": yaml_params["pointcloud_to_laserscan/angle_max"],
-            "angle_increment": yaml_params["pointcloud_to_laserscan/angle_increment"],
-            "scan_time": yaml_params["pointcloud_to_laserscan/scan_time"],
-            "range_min": yaml_params["pointcloud_to_laserscan/range_min"],
-            "range_max": yaml_params["pointcloud_to_laserscan/range_max"],
-            "use_inf": yaml_params["pointcloud_to_laserscan/use_inf"],
-            "inf_epsilon": yaml_params["pointcloud_to_laserscan/inf_epsilon"],
-        }],
-        remappings=[
-            ("cloud_in", yaml_params["pointcloud_to_laserscan/input_topic"]),
-            ("scan", yaml_params["pointcloud_to_laserscan/output_topic"]),
-        ],
-    )
-
     fast_lio_rviz = Node(
         package="rviz2",
         executable="rviz2",
@@ -95,6 +67,5 @@ def generate_launch_description():
     return LaunchDescription([
         fast_lio_sam,
         cloud_to_occupancy,
-        pointcloud_to_laserscan,
         fast_lio_rviz,
     ])

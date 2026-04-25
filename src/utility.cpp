@@ -3,8 +3,16 @@
 
 using namespace std;
 
-//Topics
-string gpsTopic;
+namespace
+{
+Eigen::Quaterniond yawOnlyQuaternion(const Eigen::Quaterniond &orientation)
+{
+    const Eigen::Vector3d euler = orientation.toRotationMatrix().eulerAngles(2, 1, 0);
+    return Eigen::Quaterniond(Eigen::AngleAxisd(euler[0], Eigen::Vector3d::UnitZ())).normalized();
+}
+} // namespace
+
+// Topics
 string lidarFrame;
 string baselinkFrame;
 string odometryFrame;
@@ -17,7 +25,6 @@ int numberOfCores;
 // Surrounding map
 float surroundingkeyframeAddingDistThreshold; 
 float surroundingkeyframeAddingAngleThreshold; 
-float surroundingKeyframeDensity;
 float surroundingKeyframeSearchRadius;
 
 // Loop closure
@@ -47,26 +54,18 @@ float scanRangeMin;
 float scanRangeMax;
 
 int ikdtreeSearchNeighborNum;
-bool publishMapToOdomTf;
+bool occupancyMapEnabled = true;
+bool mapFrameOriginInitialized = false;
+Eigen::Quaterniond mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
+Eigen::Vector3d mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
 
 void read_liosam_params() {
-
-    // Topics
-    rosparam_get("lio_sam/gpsTopic", gpsTopic, std::string("odometry/gps"));
-    rosparam_get("lio_sam/lidarFrame", lidarFrame, std::string("lidar"));
-    rosparam_get("lio_sam/baselinkFrame", baselinkFrame, std::string("base_link"));
-    rosparam_get("lio_sam/odometryFrame", odometryFrame, std::string("odom"));
-    rosparam_get("lio_sam/mapFrame", mapFrame, std::string("map"));
-    rosparam_get("lio_sam/highFrequencyBaselinkFrame", highFrequencyBaselinkFrame, std::string("base_link_hf"));
-    rosparam_get("lio_sam/publishMapToOdomTf", publishMapToOdomTf, true);
-
     // CPU parameters
     rosparam_get("lio_sam/numberOfCores", numberOfCores, 2);
 
     // Keyframe Strategy
     rosparam_get("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0f);
     rosparam_get("lio_sam/surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2f);
-    rosparam_get("lio_sam/surroundingKeyframeDensity", surroundingKeyframeDensity, 1.0f);
     rosparam_get("lio_sam/surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0f);
 
     // Loop closure parameters
@@ -84,6 +83,19 @@ void read_liosam_params() {
     rosparam_get("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0f);
 
     rosparam_get("lio_sam/mappingICPSize", mappingICPSize, 0.2f);
+    rosparam_get("occupancy_map/enabled", occupancyMapEnabled, true);
+    rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
+}
+
+void read_frame_params() {
+    rosparam_get("common/lidarFrame", lidarFrame, std::string("lidar"));
+    rosparam_get("common/baselinkFrame", baselinkFrame, std::string("base_link"));
+    rosparam_get("common/odometryFrame", odometryFrame, std::string("odom"));
+    rosparam_get("common/mapFrame", mapFrame, std::string("map"));
+    rosparam_get("common/highFrequencyBaselinkFrame", highFrequencyBaselinkFrame, std::string("base_link_hf"));
+}
+
+void read_pcl2scan_params() {
     rosparam_get("pointcloud_to_laserscan/slice_enable", scanSliceEnable, true);
     rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, -1.5f);
     rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, 0.8f);
@@ -93,5 +105,13 @@ void read_liosam_params() {
     rosparam_get("pointcloud_to_laserscan/scan_time", scanTime, 0.1f);
     rosparam_get("pointcloud_to_laserscan/range_min", scanRangeMin, 0.1f);
     rosparam_get("pointcloud_to_laserscan/range_max", scanRangeMax, 100.0f);
-    rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
+}
+
+void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,
+                               const Eigen::Quaterniond &origin_orientation)
+{
+    const Eigen::Quaterniond origin_yaw = yawOnlyQuaternion(origin_orientation.normalized());
+    mapFrameRotationFromOdom = origin_yaw.conjugate().normalized();
+    mapFrameTranslationFromOdom = -(mapFrameRotationFromOdom * origin_position);
+    mapFrameOriginInitialized = true;
 }

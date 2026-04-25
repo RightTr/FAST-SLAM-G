@@ -166,6 +166,26 @@ PointTypePose trans2PointTypePose(float transformIn[])
     return thisPose6D;
 }
 
+PointTypePose transformPoseOdomToMap(const PointTypePose &pose)
+{
+    PointTypePose mapped = pose;
+    const Eigen::Quaterniond orientation = Eigen::Quaterniond(
+        Eigen::AngleAxisd(pose.yaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(pose.pitch, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(pose.roll, Eigen::Vector3d::UnitX()));
+    const Eigen::Vector3d position = transformPositionOdomToMap(Eigen::Vector3d(pose.x, pose.y, pose.z));
+    const Eigen::Quaterniond mapped_orientation = transformOrientationOdomToMap(orientation);
+    const Eigen::Vector3d mapped_rpy = mapped_orientation.toRotationMatrix().eulerAngles(2, 1, 0);
+
+    mapped.x = position.x();
+    mapped.y = position.y();
+    mapped.z = position.z();
+    mapped.roll = mapped_rpy[2];
+    mapped.pitch = mapped_rpy[1];
+    mapped.yaw = mapped_rpy[0];
+    return mapped;
+}
+
 void setLaserCurTime(double lidar_end_time)
 {
     timeLaserInfoCur = lidar_end_time;
@@ -330,7 +350,7 @@ void MapOptimizationInit()
     pubKeyPoses = create_publisher<PointCloud2Msg>("lio_sam/trajectory", 1);
     pubPath = create_publisher<PathMsg>("lio_sam/mapping/path", 1);
     pubLaserCloudGlobal = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global", 1);
-    pubLaserCloudGlobalDense = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global_dense", 1);
+    pubLaserCloudGlobalDense = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global_2d", 1);
     pubRecentKeyFrame = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_recent_keyframe", 1);
     pubLoopConstraintEdge = create_publisher<MarkerArrayMsg>("lio_sam/loop_closure_constraints", 1);
 
@@ -540,13 +560,14 @@ void addLoopFactor()
 
 void updatePath(const PointTypePose& pose_in)
 {
+    const PointTypePose map_pose = transformPoseOdomToMap(pose_in);
     PoseStampedMsg pose_stamped;
-    pose_stamped.header.stamp = get_ros_time(pose_in.time);
+    pose_stamped.header.stamp = get_ros_time(map_pose.time);
     pose_stamped.header.frame_id = mapFrame;
-    pose_stamped.pose.position.x = pose_in.x;
-    pose_stamped.pose.position.y = pose_in.y;
-    pose_stamped.pose.position.z = pose_in.z;
-    pose_stamped.pose.orientation = quaternion_from_rpy(pose_in.roll, pose_in.pitch, pose_in.yaw);
+    pose_stamped.pose.position.x = map_pose.x;
+    pose_stamped.pose.position.y = map_pose.y;
+    pose_stamped.pose.position.z = map_pose.z;
+    pose_stamped.pose.orientation = quaternion_from_rpy(map_pose.roll, map_pose.pitch, map_pose.yaw);
 
     globalPath.poses.push_back(pose_stamped);
 }
@@ -709,7 +730,11 @@ void publishSamMsg()
     if (cloudKeyPoses3D->points.empty())
         return;
     // publish key poses
-    publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, mapFrame);
+    pcl::PointCloud<PointType>::Ptr keyPosesMap(new pcl::PointCloud<PointType>());
+    keyPosesMap->reserve(cloudKeyPoses3D->points.size());
+    for (const auto &pose : cloudKeyPoses3D->points)
+        keyPosesMap->push_back(transformPointOdomToMap(pose));
+    publishCloud(pubKeyPoses, keyPosesMap, timeLaserInfoStamp, mapFrame);
     if (ros_subscription_count(pubPath) != 0)
     {
         globalPath.header.stamp = timeLaserInfoStamp;
@@ -722,7 +747,7 @@ void publishSamMsg()
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
         PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
         *cloudOut += *transformPointCloud(featCloudKeyFrames.back(), &thisPose6D);
-        publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, mapFrame);
+        publishCloud(pubRecentKeyFrame, transformCloudOdomToMap<PointType>(cloudOut), timeLaserInfoStamp, mapFrame);
     }
 }
 
@@ -762,14 +787,16 @@ void visualizeLoopClosure()
         int key_cur = it->first;
         int key_pre = it->second;
         PointMsg p;
-        p.x = copy_cloudKeyPoses6D->points[key_cur].x;
-        p.y = copy_cloudKeyPoses6D->points[key_cur].y;
-        p.z = copy_cloudKeyPoses6D->points[key_cur].z;
+        const PointType point_cur = transformPointOdomToMap(copy_cloudKeyPoses3D->points[key_cur]);
+        p.x = point_cur.x;
+        p.y = point_cur.y;
+        p.z = point_cur.z;
         markerNode.points.push_back(p);
         markerEdge.points.push_back(p);
-        p.x = copy_cloudKeyPoses6D->points[key_pre].x;
-        p.y = copy_cloudKeyPoses6D->points[key_pre].y;
-        p.z = copy_cloudKeyPoses6D->points[key_pre].z;
+        const PointType point_pre = transformPointOdomToMap(copy_cloudKeyPoses3D->points[key_pre]);
+        p.x = point_pre.x;
+        p.y = point_pre.y;
+        p.z = point_pre.z;
         markerNode.points.push_back(p);
         markerEdge.points.push_back(p);
     }
@@ -797,7 +824,7 @@ void loopClosureThread()
 
 void publishGlobalMap() {
     const bool need_sparse_global = ros_subscription_count(pubLaserCloudGlobal) != 0;
-    const bool need_dense_global = ros_subscription_count(pubLaserCloudGlobalDense) != 0;
+    const bool need_dense_global = occupancyMapEnabled || ros_subscription_count(pubLaserCloudGlobalDense) != 0;
     if (!need_sparse_global && !need_dense_global)
         return;
 
@@ -848,10 +875,14 @@ void publishGlobalMap() {
         downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
         downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
-        publishCloud(pubLaserCloudGlobal, globalMapKeyFramesDS, timeLaserInfoStamp, mapFrame);
+        publishCloud(pubLaserCloudGlobal, transformCloudOdomToMap<PointType>(globalMapKeyFramesDS), timeLaserInfoStamp, mapFrame);
     }
     if (need_dense_global) {
-        publishCloud(pubLaserCloudGlobalDense, globalMapDenseKeyFrames, timeLaserInfoStamp, mapFrame);
+        PointCloud2Msg denseCloudMsg;
+        pcl::toROSMsg(*transformCloudOdomToMap<PointType>(globalMapDenseKeyFrames), denseCloudMsg);
+        denseCloudMsg.header.stamp = timeLaserInfoStamp;
+        denseCloudMsg.header.frame_id = mapFrame;
+        ros_publish(pubLaserCloudGlobalDense, denseCloudMsg);
     }
 }
 
