@@ -11,15 +11,8 @@ string odometryFrame;
 string mapFrame;
 string highFrequencyBaselinkFrame;
 
-// GPS Settings
-bool useImuHeadingInitialization;
-bool useGpsElevation;
-float gpsCovThreshold;
-float poseCovThreshold;
-
 // CPU Params
 int numberOfCores;
-double mappingProcessInterval;
 
 // Surrounding map
 float surroundingkeyframeAddingDistThreshold; 
@@ -60,15 +53,8 @@ void read_liosam_params() {
         highFrequencyBaselinkFrame = baselinkFrame + "_hf";
     }
 
-    // GPS settings
-    rosparam_get("lio_sam/useImuHeadingInitialization", useImuHeadingInitialization, false);
-    rosparam_get("lio_sam/useGpsElevation", useGpsElevation, false);
-    rosparam_get("lio_sam/gpsCovThreshold", gpsCovThreshold, 2.0f);
-    rosparam_get("lio_sam/poseCovThreshold", poseCovThreshold, 25.0f);
-
     // CPU parameters
     rosparam_get("lio_sam/numberOfCores", numberOfCores, 2);
-    rosparam_get("lio_sam/mappingProcessInterval", mappingProcessInterval, 0.15);
 
     // Keyframe Strategy
     rosparam_get("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0f);

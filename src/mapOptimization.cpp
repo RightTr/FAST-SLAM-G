@@ -10,7 +10,6 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/navigation/GPSFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
@@ -38,7 +37,6 @@ using namespace std;
 using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
-using symbol_shorthand::G; // GPS pose
 
 /*
     * A point cloud type that has 6D pose info ([x,y,z,roll,pitch,yaw] intensity is time stamp)
@@ -84,11 +82,7 @@ Pcl2Publisher pubRecentKeyFrame;
 Pcl2Publisher pubCloudRegisteredRaw;
 MarkerArrayPublisher pubLoopConstraintEdge;
 
-OdomSubscriber subGPS;
-
 TimeType timeLaserInfoStamp;
-
-std::deque<OdometryMsg> gpsQueue;
 
 pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D; // Store keyframe poses and indexes 
 pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -194,11 +188,6 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::
     return cloudOut;
 }
 
-void gpsHandler(const OdometryMsgConstPtr& gpsMsg)
-{
-    gpsQueue.push_back(*gpsMsg);
-}
-
 void allocateMemory()
 {
     cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
@@ -227,7 +216,6 @@ void MapOptimizationInit()
     pubLaserCloudGlobal = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global", 1);
     pubRecentKeyFrame = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_recent_keyframe", 1);
     pubLoopConstraintEdge = create_publisher<MarkerArrayMsg>("lio_sam/loop_closure_constraints", 1);
-    subGPS = create_subscriber<OdometryMsg>(gpsTopic, 200, gpsHandler);
 
     downSizeFilterICP.setLeafSize(mappingICPSize, mappingICPSize, mappingICPSize);
 
@@ -413,86 +401,6 @@ void addOdomFactor()
     }
 }
 
-void addGPSFactor()
-    {
-        if (gpsQueue.empty())
-            return;
-
-        // wait for system initialized and settles down
-        if (cloudKeyPoses3D->points.empty())
-            return;
-        else
-        {
-            if (pointDistance(cloudKeyPoses3D->front(), cloudKeyPoses3D->back()) < 5.0)
-                return;
-        }
-
-        // pose covariance small, no need to correct
-        if (poseCovariance(3,3) < poseCovThreshold && poseCovariance(4,4) < poseCovThreshold)
-            return;
-
-        // last gps position
-        static PointType lastGPSPoint;
-
-        while (!gpsQueue.empty())
-        {
-            if (get_ros_time_sec(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2)
-            {
-                // message too old
-                gpsQueue.pop_front();
-            }
-            else if (get_ros_time_sec(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2)
-            {
-                // message too new
-                break;
-            }
-            else
-            {
-                OdometryMsg thisGPS = gpsQueue.front();
-                gpsQueue.pop_front();
-
-                // GPS too noisy, skip
-                float noise_x = thisGPS.pose.covariance[0];
-                float noise_y = thisGPS.pose.covariance[7];
-                float noise_z = thisGPS.pose.covariance[14];
-                if (noise_x > gpsCovThreshold || noise_y > gpsCovThreshold)
-                    continue;
-
-                float gps_x = thisGPS.pose.pose.position.x;
-                float gps_y = thisGPS.pose.pose.position.y;
-                float gps_z = thisGPS.pose.pose.position.z;
-                if (!useGpsElevation)
-                {
-                    gps_z = transformTobeMapped[5];
-                    noise_z = 0.01;
-                }
-
-                // GPS not properly initialized (0,0,0)
-                if (abs(gps_x) < 1e-6 && abs(gps_y) < 1e-6)
-                    continue;
-
-                // Add GPS every a few meters
-                PointType curGPSPoint;
-                curGPSPoint.x = gps_x;
-                curGPSPoint.y = gps_y;
-                curGPSPoint.z = gps_z;
-                if (pointDistance(curGPSPoint, lastGPSPoint) < 5.0)
-                    continue;
-                else
-                    lastGPSPoint = curGPSPoint;
-
-                gtsam::Vector Vector3(3);
-                Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);
-                noiseModel::Diagonal::shared_ptr gps_noise = noiseModel::Diagonal::Variances(Vector3);
-                gtsam::GPSFactor gps_factor(cloudKeyPoses3D->size(), gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);
-                gtSAMgraph.add(gps_factor);
-
-                aLoopIsClosed = true;
-                break;
-            }
-        }
-    }
-
 void addLoopFactor()
 {
     if (loopIndexQueue.empty())
@@ -533,9 +441,6 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
 
     // odom factor
     addOdomFactor();
-
-    // gps factor
-    // addGPSFactor();
 
     // loop factor
     addLoopFactor();

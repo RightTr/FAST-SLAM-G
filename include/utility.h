@@ -17,15 +17,8 @@ extern std::string odometryFrame;
 extern std::string mapFrame;
 extern std::string highFrequencyBaselinkFrame;
 
-// GPS Settings
-extern bool useImuHeadingInitialization;
-extern bool useGpsElevation;
-extern float gpsCovThreshold;
-extern float poseCovThreshold;
-
 // CPU Params
 extern int numberOfCores;
-extern double mappingProcessInterval;
 
 // Surrounding map
 extern float surroundingkeyframeAddingDistThreshold; 
