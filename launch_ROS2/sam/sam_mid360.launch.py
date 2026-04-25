@@ -54,6 +54,13 @@ def generate_launch_description():
         parameters=fast_lio_params,
     )
 
+    cloud_to_occupancy = Node(
+        package='fast_lio_sam',
+        executable='cloud_to_occupancy',
+        output='screen',
+        parameters=[yaml_params],
+    )
+
     fast_lio_rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -64,5 +71,6 @@ def generate_launch_description():
     
     return LaunchDescription([
         fast_lio_sam,
+        cloud_to_occupancy,
         fast_lio_rviz
     ])

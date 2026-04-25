@@ -11,6 +11,11 @@
 
 //Topics
 extern std::string gpsTopic;
+extern std::string lidarFrame;
+extern std::string baselinkFrame;
+extern std::string odometryFrame;
+extern std::string mapFrame;
+extern std::string highFrequencyBaselinkFrame;
 
 // GPS Settings
 extern bool useImuHeadingInitialization;
@@ -45,6 +50,7 @@ extern float globalMapVisualizationLeafSize;
 extern float mappingICPSize;
 
 extern int ikdtreeSearchNeighborNum;
+extern bool publishMapToOdomTf;
 
 extern std::atomic<bool> flg_exit;
 

@@ -9,6 +9,7 @@
 #include <Python.h>
 #include <so3_math.h>
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include "IMU_Processing.hpp"
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -132,6 +133,12 @@ PathMsg path;
 OdomMsg odomAftMapped;
 QuaternionMsg geoQuat;
 PoseStampedMsg msg_body_pose;
+
+struct PoseEstimate
+{
+    Eigen::Vector3d position = Eigen::Vector3d::Zero();
+    Eigen::Quaterniond orientation = Eigen::Quaterniond::Identity();
+};
 
 int    scan_frame_idx = 0;
 bool   scan_frame_dir_ready = false;
@@ -548,6 +555,103 @@ void update_state_ikfom()
     kf.change_x(state_updated);
 }
 
+inline const std::string& global_frame_id()
+{
+    return sam_enable ? mapFrame : odometryFrame;
+}
+
+PoseEstimate poseEstimateFromState(const state_ikfom& state)
+{
+    PoseEstimate pose;
+    pose.position = state.pos;
+    pose.orientation = state.rot.normalized();
+    return pose;
+}
+
+PoseEstimate poseEstimateFromBufferPose(const Pose& pose_in)
+{
+    PoseEstimate pose;
+    pose.position = Eigen::Vector3d(pose_in._x, pose_in._y, pose_in._z);
+    pose.orientation = Eigen::Quaterniond(
+        pose_in._qw, pose_in._qx, pose_in._qy, pose_in._qz).normalized();
+    return pose;
+}
+
+PoseEstimate poseEstimateFromTransform(const float transform[6])
+{
+    PoseEstimate pose;
+    pose.position = Eigen::Vector3d(transform[3], transform[4], transform[5]);
+    pose.orientation =
+        Eigen::AngleAxisd(transform[2], Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(transform[1], Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(transform[0], Eigen::Vector3d::UnitX());
+    pose.orientation.normalize();
+    return pose;
+}
+
+template<typename T>
+void set_geometry_pose(T & out, const PoseEstimate& pose)
+{
+    out.position.x = pose.position.x();
+    out.position.y = pose.position.y();
+    out.position.z = pose.position.z();
+    out.orientation.x = pose.orientation.x();
+    out.orientation.y = pose.orientation.y();
+    out.orientation.z = pose.orientation.z();
+    out.orientation.w = pose.orientation.w();
+}
+
+void publish_transform(
+    const TimeType& stamp,
+    const std::string& parent_frame,
+    const std::string& child_frame,
+    const PoseEstimate& pose)
+{
+    TransformStampedMsg tf_msg;
+    tf_msg.header.stamp = stamp;
+    tf_msg.header.frame_id = parent_frame;
+    tf_msg.child_frame_id = child_frame;
+    tf_msg.transform.translation.x = pose.position.x();
+    tf_msg.transform.translation.y = pose.position.y();
+    tf_msg.transform.translation.z = pose.position.z();
+    tf_msg.transform.rotation.x = pose.orientation.x();
+    tf_msg.transform.rotation.y = pose.orientation.y();
+    tf_msg.transform.rotation.z = pose.orientation.z();
+    tf_msg.transform.rotation.w = pose.orientation.w();
+
+#ifdef USE_ROS1
+    static tf::TransformBroadcaster br;
+#elif defined(USE_ROS2)
+    static tf2_ros::TransformBroadcaster br(get_ros_node());
+#endif
+    br.sendTransform(tf_msg);
+}
+
+void publish_map_to_odom_tf(
+    const TimeType& stamp,
+    const PoseEstimate& map_pose,
+    const PoseEstimate& odom_pose)
+{
+    if (!publishMapToOdomTf || mapFrame == odometryFrame) {
+        return;
+    }
+
+    Eigen::Isometry3d map_to_base = Eigen::Isometry3d::Identity();
+    map_to_base.linear() = map_pose.orientation.toRotationMatrix();
+    map_to_base.translation() = map_pose.position;
+
+    Eigen::Isometry3d odom_to_base = Eigen::Isometry3d::Identity();
+    odom_to_base.linear() = odom_pose.orientation.toRotationMatrix();
+    odom_to_base.translation() = odom_pose.position;
+
+    const Eigen::Isometry3d map_to_odom = map_to_base * odom_to_base.inverse();
+
+    PoseEstimate map_to_odom_pose;
+    map_to_odom_pose.position = map_to_odom.translation();
+    map_to_odom_pose.orientation = Eigen::Quaterniond(map_to_odom.linear()).normalized();
+    publish_transform(stamp, mapFrame, odometryFrame, map_to_odom_pose);
+}
+
 void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
 {
     if(scan_pub_en)
@@ -565,7 +669,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
         Pcl2Msg laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
-        laserCloudmsg.header.frame_id = "camera_init";
+        laserCloudmsg.header.frame_id = global_frame_id();
         ros_publish(pubLaserCloudFull, laserCloudmsg);
         publish_count -= PUBFRAME_PERIOD;
     }
@@ -651,7 +755,7 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
     Pcl2Msg laserCloudmsg;
     pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
     laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
-    laserCloudmsg.header.frame_id = "body";
+    laserCloudmsg.header.frame_id = baselinkFrame;
     ros_publish(pubLaserCloudFull_body, laserCloudmsg);
     publish_count -= PUBFRAME_PERIOD;
 }
@@ -668,7 +772,7 @@ void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
     Pcl2Msg laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
     laserCloudFullRes3.header.stamp = get_ros_time(lidar_end_time);
-    laserCloudFullRes3.header.frame_id = "camera_init";
+    laserCloudFullRes3.header.frame_id = global_frame_id();
     ros_publish(pubLaserCloudEffect, laserCloudFullRes3);
 }
 
@@ -677,7 +781,7 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
     Pcl2Msg laserCloudMap;
     pcl::toROSMsg(*featsFromMap, laserCloudMap);
     laserCloudMap.header.stamp = get_ros_time(lidar_end_time);
-    laserCloudMap.header.frame_id = "camera_init";
+    laserCloudMap.header.frame_id = global_frame_id();
     ros_publish(pubLaserCloudMap, laserCloudMap);
 }
 
@@ -690,60 +794,33 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
             usleep(1000);
             continue;
         }
+        const PoseEstimate high_freq_pose = poseEstimateFromBufferPose(pose);
         OdomMsg msg;
         msg.header.stamp = get_ros_time(pose._timestamp);
-        msg.header.frame_id = "camera_init";
-        msg.child_frame_id = "body";
-
-        msg.pose.pose.position.x = pose._x;
-        msg.pose.pose.position.y = pose._y;
-        msg.pose.pose.position.z = pose._z;
-        msg.pose.pose.orientation.x = pose._qx;
-        msg.pose.pose.orientation.y = pose._qy;
-        msg.pose.pose.orientation.z = pose._qz;
-        msg.pose.pose.orientation.w = pose._qw;
-
-        TransformStampedMsg tf_msg;
-        tf_msg.header.stamp = msg.header.stamp;
-        tf_msg.header.frame_id = "camera_init";
-        tf_msg.child_frame_id = "body_hf";
-        tf_msg.transform.translation.x = msg.pose.pose.position.x;
-        tf_msg.transform.translation.y = msg.pose.pose.position.y;
-        tf_msg.transform.translation.z = msg.pose.pose.position.z;
-        tf_msg.transform.rotation = msg.pose.pose.orientation;
+        msg.header.frame_id = odometryFrame;
+        msg.child_frame_id = highFrequencyBaselinkFrame;
+        set_geometry_pose(msg.pose.pose, high_freq_pose);
 
         ros_publish(pubOdomHighFreq, msg);
-
-#ifdef USE_ROS1
-        static tf::TransformBroadcaster br_hf;
-#elif defined(USE_ROS2)
-        static tf2_ros::TransformBroadcaster br_hf(get_ros_node());
-#endif
-        br_hf.sendTransform(tf_msg);
+        publish_transform(msg.header.stamp, odometryFrame, highFrequencyBaselinkFrame, high_freq_pose);
     }
 }
 
 template<typename T>
-void set_posestamp(T & out)
+void set_posestamp(T & out, const PoseEstimate& pose)
 {
-    out.pose.position.x = state_point.pos(0);
-    out.pose.position.y = state_point.pos(1);
-    out.pose.position.z = state_point.pos(2);
-    out.pose.orientation.x = geoQuat.x;
-    out.pose.orientation.y = geoQuat.y;
-    out.pose.orientation.z = geoQuat.z;
-    out.pose.orientation.w = geoQuat.w;
-    
+    set_geometry_pose(out.pose, pose);
 }
 
-void publish_odometry(const OdomPublisher & pubOdomAftMapped)
+void publish_odometry(const OdomPublisher & pubOdomAftMapped, const PoseEstimate& odom_pose)
 {
-    odomAftMapped.header.frame_id = "camera_init";
-    odomAftMapped.child_frame_id = "body";
-    set_posestamp(odomAftMapped.pose);
+    odomAftMapped.header.frame_id = odometryFrame;
+    odomAftMapped.child_frame_id = baselinkFrame;
+    set_posestamp(odomAftMapped.pose, odom_pose);
     odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
 
     auto P = kf.get_P();
+    std::fill(std::begin(odomAftMapped.pose.covariance), std::end(odomAftMapped.pose.covariance), 0.0);
     for (int i = 0; i < 6; i ++)
     {
         int k = i < 3 ? i + 3 : i - 3;
@@ -755,31 +832,26 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped)
         odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
     }
 
-    TransformStampedMsg tf_msg;
-    tf_msg.header.stamp = odomAftMapped.header.stamp;
-    tf_msg.header.frame_id = "camera_init";
-    tf_msg.child_frame_id  = "body";
-    tf_msg.transform.translation.x = odomAftMapped.pose.pose.position.x;
-    tf_msg.transform.translation.y = odomAftMapped.pose.pose.position.y;
-    tf_msg.transform.translation.z = odomAftMapped.pose.pose.position.z;
-    tf_msg.transform.rotation = odomAftMapped.pose.pose.orientation;
-
     ros_publish(pubOdomAftMapped, odomAftMapped);
+    publish_transform(odomAftMapped.header.stamp, odometryFrame, baselinkFrame, odom_pose);
+}
 
-#ifdef USE_ROS1
-    static tf::TransformBroadcaster br;
-#elif defined(USE_ROS2)
-    static tf2_ros::TransformBroadcaster br(get_ros_node());
-#endif
-    br.sendTransform(tf_msg);
+void publish_global_odometry(const OdomPublisher & pubGlobalOdom, const PoseEstimate& map_pose)
+{
+    OdomMsg global_odom;
+    global_odom.header.stamp = get_ros_time(lidar_end_time);
+    global_odom.header.frame_id = mapFrame;
+    global_odom.child_frame_id = baselinkFrame;
+    set_geometry_pose(global_odom.pose.pose, map_pose);
+    ros_publish(pubGlobalOdom, global_odom);
 }
 
 void publish_path(const PathPublisher pubPath)
 {
-    set_posestamp(msg_body_pose);
+    set_posestamp(msg_body_pose, poseEstimateFromState(state_point));
     msg_body_pose.header.stamp = get_ros_time(lidar_end_time);
 
-    msg_body_pose.header.frame_id = "camera_init";
+    msg_body_pose.header.frame_id = global_frame_id();
 
     /*** if path is too large, rviz will crash ***/
     static int jjj = 0;
@@ -975,12 +1047,16 @@ int main(int argc, char** argv)
     rosparam_get("zupt/lidar_cov_static_scale",  lidar_cov_static_scale,  5.0);
     rosparam_get("zupt/lidar_residual_ref",      lidar_residual_ref,      0.05);
 
-    path.header.stamp = get_ros_now();
-    path.header.frame_id = "camera_init";
+    read_liosam_params();
 
-    if (sam_enable) {
-        read_liosam_params();
-    }
+    #ifdef USE_ROS1
+    path.header.stamp = get_ros_now();
+    #elif defined(USE_ROS2)
+    path.header.stamp = get_ros_now(get_ros_node());
+    #endif
+    path.header.frame_id = global_frame_id();
+
+    geoQuat = quaternion_from_rpy(0.0, 0.0, 0.0);
 
     p_pre->lidar_type = lidar_type;
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
@@ -1067,10 +1143,11 @@ int main(int argc, char** argv)
     auto pubLaserCloudMap = create_publisher<PointCloud2Msg>("/Laser_map", 100000);
     #ifdef USE_ROS1
     int odom_qos = 0;  // ROS1 ignores this parameter
-    #else defined(USE_ROS2) 
+    #elif defined(USE_ROS2)
     auto odom_qos = rclcpp::QoS(10).best_effort(); // avoid latency caused by QoS reliability in ROS2
     #endif
     auto pubOdomAftMapped = create_publisher_qos<OdometryMsg>("/Odometry", odom_qos);
+    auto pubGlobalOdom = create_publisher_qos<OdometryMsg>("/OdometryGlobal", odom_qos);
     auto pubPath = create_publisher_qos<PathMsg>("/path", odom_qos);
     auto pubOdomHighFreq = create_publisher_qos<OdometryMsg>("/OdometryHighFreq", odom_qos);
     p_pre->pub_corn = create_publisher<PointCloud2Msg>("/corn_feature", 100000);
@@ -1240,6 +1317,7 @@ int main(int argc, char** argv)
             geoQuat.y = state_point.rot.coeffs()[1];
             geoQuat.z = state_point.rot.coeffs()[2];
             geoQuat.w = state_point.rot.coeffs()[3];
+            const PoseEstimate odom_pose = poseEstimateFromState(state_point);
 
             double t_update_end = omp_get_wtime();
             
@@ -1253,8 +1331,13 @@ int main(int argc, char** argv)
                 publishSamMsg();
             }
 
+            const PoseEstimate map_pose = sam_enable ? poseEstimateFromState(state_point) : odom_pose;
+            const TimeType odom_stamp = get_ros_time(lidar_end_time);
+            publish_map_to_odom_tf(odom_stamp, map_pose, odom_pose);
+
             /******* Publish odometry *******/
-            publish_odometry(pubOdomAftMapped);
+            publish_odometry(pubOdomAftMapped, odom_pose);
+            publish_global_odometry(pubGlobalOdom, map_pose);
 
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();

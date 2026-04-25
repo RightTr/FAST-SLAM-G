@@ -215,7 +215,7 @@ inline double get_ros_time_sec(const builtin_interfaces::msg::Time &stamp)
 #endif
 
 #ifdef USE_ROS1
-inline ros::Time get_ros_now()
+inline ros::Time get_ros_now(const void *node = nullptr)
 {
     return ros::Time::now();
 }
@@ -361,4 +361,3 @@ inline typename rclcpp::Subscription<T>::SharedPtr create_subscriber_qos(const s
 #endif
 
 #endif
-

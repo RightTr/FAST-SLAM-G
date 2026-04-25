@@ -5,6 +5,11 @@ using namespace std;
 
 //Topics
 string gpsTopic;
+string lidarFrame;
+string baselinkFrame;
+string odometryFrame;
+string mapFrame;
+string highFrequencyBaselinkFrame;
 
 // GPS Settings
 bool useImuHeadingInitialization;
@@ -39,11 +44,21 @@ float globalMapVisualizationLeafSize;
 float mappingICPSize;
 
 int ikdtreeSearchNeighborNum;
+bool publishMapToOdomTf;
 
 void read_liosam_params() {
 
     // Topics
     rosparam_get("lio_sam/gpsTopic", gpsTopic, std::string("odometry/gps"));
+    rosparam_get("lio_sam/lidarFrame", lidarFrame, std::string("lidar"));
+    rosparam_get("lio_sam/baselinkFrame", baselinkFrame, std::string("base_link"));
+    rosparam_get("lio_sam/odometryFrame", odometryFrame, std::string("odom"));
+    rosparam_get("lio_sam/mapFrame", mapFrame, std::string("map"));
+    rosparam_get("lio_sam/highFrequencyBaselinkFrame", highFrequencyBaselinkFrame, std::string(""));
+    rosparam_get("lio_sam/publishMapToOdomTf", publishMapToOdomTf, true);
+    if (highFrequencyBaselinkFrame.empty()) {
+        highFrequencyBaselinkFrame = baselinkFrame + "_hf";
+    }
 
     // GPS settings
     rosparam_get("lio_sam/useImuHeadingInitialization", useImuHeadingInitialization, false);
