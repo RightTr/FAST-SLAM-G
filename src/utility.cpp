@@ -36,6 +36,13 @@ float globalMapVisualizationLeafSize;
 
 float mappingICPSize;
 
+bool denseKeyframeSliceEnable;
+float denseKeyframeSliceMinZ;
+float denseKeyframeSliceMaxZ;
+bool denseKeyframeSliceFlatten;
+bool denseKeyframeSliceUseForRecentCloud;
+bool denseKeyframeSliceUseForGlobalMap;
+
 int ikdtreeSearchNeighborNum;
 bool publishMapToOdomTf;
 
@@ -74,5 +81,11 @@ void read_liosam_params() {
     rosparam_get("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0f);
 
     rosparam_get("lio_sam/mappingICPSize", mappingICPSize, 0.2f);
+    rosparam_get("lio_sam/denseKeyframeSliceEnable", denseKeyframeSliceEnable, true);
+    rosparam_get("lio_sam/denseKeyframeSliceMinZ", denseKeyframeSliceMinZ, -1.5f);
+    rosparam_get("lio_sam/denseKeyframeSliceMaxZ", denseKeyframeSliceMaxZ, 0.8f);
+    rosparam_get("lio_sam/denseKeyframeSliceFlatten", denseKeyframeSliceFlatten, false);
+    rosparam_get("lio_sam/denseKeyframeSliceUseForRecentCloud", denseKeyframeSliceUseForRecentCloud, true);
+    rosparam_get("lio_sam/denseKeyframeSliceUseForGlobalMap", denseKeyframeSliceUseForGlobalMap, true);
     rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
 }

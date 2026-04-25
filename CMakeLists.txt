@@ -70,6 +70,7 @@ if(USE_ROS1)
     geometry_msgs
     nav_msgs
     sensor_msgs
+    visualization_msgs
     roscpp
     rospy
     std_msgs
@@ -95,7 +96,7 @@ if(USE_ROS1)
   )
 
   catkin_package(
-    CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime
+    CATKIN_DEPENDS geometry_msgs nav_msgs sensor_msgs visualization_msgs roscpp rospy std_msgs message_runtime
     DEPENDS EIGEN3 PCL GTSAM
     INCLUDE_DIRS
   )
@@ -114,6 +115,8 @@ endif()
 if(USE_ROS2)
   add_definitions(-DUSE_ROS2)
   find_package(rclcpp REQUIRED)
+  find_package(tf2 REQUIRED)
+  find_package(builtin_interfaces REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(geometry_msgs REQUIRED)
   find_package(nav_msgs REQUIRED)
@@ -137,10 +140,12 @@ if(USE_ROS2)
     src/mapOptimization.cpp)
   add_executable(cloud_to_occupancy src/cloud_to_Occupancy.cpp)
   ament_target_dependencies(fastlio_mapping
+    builtin_interfaces
     rclcpp
     sensor_msgs
     geometry_msgs
     nav_msgs
+    tf2
     tf2_ros
     pcl_conversions
     PCL
@@ -149,9 +154,16 @@ if(USE_ROS2)
     visualization_msgs
   )
   ament_target_dependencies(cloud_to_occupancy
+    builtin_interfaces
     rclcpp
     sensor_msgs
+    geometry_msgs
     nav_msgs
+    visualization_msgs
+    tf2
+    tf2_ros
+    tf2_eigen
+    livox_ros_driver2
     pcl_conversions
     PCL
   )

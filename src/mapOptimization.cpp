@@ -5,6 +5,7 @@
 #include "ros_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
@@ -74,6 +75,7 @@ Pcl2Publisher pubKeyPoses;
 PathPublisher pubPath;
 
 Pcl2Publisher pubLaserCloudGlobal;
+Pcl2Publisher pubLaserCloudGlobalDense;
 Pcl2Publisher pubLaserCloudLocal;
 
 Pcl2Publisher pubHistoryKeyFrames;
@@ -111,12 +113,15 @@ vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
 pcl::VoxelGrid<PointType> downSizeFilterICP;
 
 vector<pcl::PointCloud<PointType>::Ptr> featCloudKeyFrames;
+vector<pcl::PointCloud<PointType>::Ptr> denseCloudKeyFrames;
 
 KD_TREE_PUBLIC<PointType>::Ptr ikdtreeHistoryKeyPoses;
 
 KD_TREE_PUBLIC<PointType>::PointVector initPoses3D;
 
 map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
+
+void publishGlobalMap();
 
 Eigen::Affine3f pclPointToAffine3f(PointTypePose thisPoint)
 { 
@@ -196,10 +201,25 @@ void allocateMemory()
     copy_cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
 
     ikdtreeHistoryKeyPoses.reset(new KD_TREE_PUBLIC<PointType>());
+    featCloudKeyFrames.clear();
+    denseCloudKeyFrames.clear();
+    initPoses3D.clear();
 
     for (int i = 0; i < 6; ++i){
         transformTobeMapped[i] = 0;
     }
+}
+
+PointType transformFrontendPointToImu(const pcl::PointXYZINormal &pt)
+{
+    PointType point;
+    const Eigen::Vector3d pointBodyLidar(pt.x, pt.y, pt.z);
+    const Eigen::Vector3d pointBodyImu(rotationLidarToIMU * pointBodyLidar + translationLidarToIMU);
+    point.x = pointBodyImu(0);
+    point.y = pointBodyImu(1);
+    point.z = pointBodyImu(2);
+    point.intensity = pt.intensity;
+    return point;
 }
 
 void MapOptimizationInit()
@@ -214,6 +234,7 @@ void MapOptimizationInit()
     pubKeyPoses = create_publisher<PointCloud2Msg>("lio_sam/trajectory", 1);
     pubPath = create_publisher<PathMsg>("lio_sam/mapping/path", 1);
     pubLaserCloudGlobal = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global", 1);
+    pubLaserCloudGlobalDense = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_global_dense", 1);
     pubRecentKeyFrame = create_publisher<PointCloud2Msg>("lio_sam/mapping/cloud_recent_keyframe", 1);
     pubLoopConstraintEdge = create_publisher<MarkerArrayMsg>("lio_sam/loop_closure_constraints", 1);
 
@@ -436,7 +457,7 @@ void updatePath(const PointTypePose& pose_in)
 
 void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort)
 {
-    if (saveFrame() == false)
+    if (!cloudKeyPoses3D->points.empty() && saveFrame() == false)
         return;
 
     // odom factor
@@ -506,28 +527,29 @@ void saveKeyFramesAndFactor(pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_und
     transformTobeMapped[5] = latestEstimate.translation().z();
 
     pcl::PointCloud<PointType>::Ptr featCloudKeyFrame(new pcl::PointCloud<PointType>());
-    PointType point;
-    for (const auto &pt : feats_undistort->points) {
-        Eigen::Vector3d pointBodyLidar(pt.x, pt.y, pt.z);
-        Eigen::Vector3d pointBodyImu(rotationLidarToIMU * pointBodyLidar + translationLidarToIMU);
+    pcl::PointCloud<PointType>::Ptr denseCloudKeyFrame(new pcl::PointCloud<PointType>());
+    featCloudKeyFrame->reserve(feats_undistort->points.size());
+    denseCloudKeyFrame->reserve(feats_undistort->points.size());
 
-        point.x = pointBodyImu(0);
-        point.y = pointBodyImu(1);
-        point.z = pointBodyImu(2);
-        point.intensity = pt.intensity;
+    for (const auto &pt : feats_undistort->points) {
+        PointType point = transformFrontendPointToImu(pt);
         featCloudKeyFrame->push_back(point);
+        denseCloudKeyFrame->push_back(point);
     }
 
     featCloudKeyFrames.push_back(featCloudKeyFrame);
+    denseCloudKeyFrames.push_back(denseCloudKeyFrame);
 
     if (ikdtreeHistoryKeyPoses->Root_Node == nullptr) {
         initPoses3D.push_back(thisPose3D);
-        if (cloudKeyPoses3D->points.size() < 10)
-            return;
         ikdtreeHistoryKeyPoses->Build(initPoses3D);
     } else {
         ikdtreeHistoryKeyPoses->Add_Point(thisPose3D);
     }
+
+    // Publish immediately when a new keyframe is added so the first keyframe can
+    // generate a LaserScan without waiting for the slow visualization thread.
+    publishGlobalMap();
 }
 
 void ReconstructIkdTree()
@@ -598,7 +620,7 @@ void publishSamMsg()
     {
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
         PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
-        *cloudOut += *transformPointCloud(featCloudKeyFrames.back(),  &thisPose6D);
+        *cloudOut += *transformPointCloud(featCloudKeyFrames.back(), &thisPose6D);
         publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, mapFrame);
     }
 }
@@ -673,7 +695,9 @@ void loopClosureThread()
 }
 
 void publishGlobalMap() {
-    if (ros_subscription_count(pubLaserCloudGlobal) == 0)
+    const bool need_sparse_global = ros_subscription_count(pubLaserCloudGlobal) != 0;
+    const bool need_dense_global = ros_subscription_count(pubLaserCloudGlobalDense) != 0;
+    if (!need_sparse_global && !need_dense_global)
         return;
 
     if (cloudKeyPoses3D->points.empty())
@@ -683,6 +707,7 @@ void publishGlobalMap() {
     pcl::PointCloud<PointType>::Ptr globalMapKeyPosesDS(new pcl::PointCloud<PointType>());
     pcl::PointCloud<PointType>::Ptr globalMapKeyFrames(new pcl::PointCloud<PointType>());
     pcl::PointCloud<PointType>::Ptr globalMapKeyFramesDS(new pcl::PointCloud<PointType>());
+    pcl::PointCloud<PointType>::Ptr globalMapDenseKeyFrames(new pcl::PointCloud<PointType>());
 
     // ikd-tree to find near key frames to visualize
     KD_TREE_PUBLIC<PointType>::PointVector globalMapSearchPoses3D;
@@ -710,14 +735,23 @@ void publishGlobalMap() {
         if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
             continue;
         int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
-        *globalMapKeyFrames += *transformPointCloud(featCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
+        if (need_sparse_global) {
+            *globalMapKeyFrames += *transformPointCloud(featCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+        }
+        if (need_dense_global) {
+            *globalMapDenseKeyFrames += *transformPointCloud(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+        }
     }
-    // downsample visualized points
-    pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames; // for global map visualization
-    downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
-    downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
-    downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
-    publishCloud(pubLaserCloudGlobal, globalMapKeyFramesDS, timeLaserInfoStamp, mapFrame);
+    if (need_sparse_global) {
+        pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames; // for global map visualization
+        downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
+        downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
+        downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
+        publishCloud(pubLaserCloudGlobal, globalMapKeyFramesDS, timeLaserInfoStamp, mapFrame);
+    }
+    if (need_dense_global) {
+        publishCloud(pubLaserCloudGlobalDense, globalMapDenseKeyFrames, timeLaserInfoStamp, mapFrame);
+    }
 }
 
 void visualizeGlobalMapThread()

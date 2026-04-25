@@ -128,7 +128,7 @@ zupt:
 
 Subscribe the topic */OdometryHighFreq* to receive high frequency odometry output via IMU propagation between LiDAR scans.
 
-### GridMap Notes
+### GridMap
 
 The GridMap node projects the optimized global point cloud to `/map` as a 2D `OccupancyGrid`.
 

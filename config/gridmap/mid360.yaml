@@ -92,12 +92,30 @@ zupt:
 
 occupancy_map:
     enabled: true
-    input_topic: "lio_sam/mapping/cloud_global"
+    input_type: "laserscan"
+    input_topic: "/scan"
     output_topic: "/map"
     map_frame: "map"
-    resolution: 0.10
+    resolution: 0.03
     padding: 5.0
     obstacle_min_height: -0.30
-    obstacle_max_height: 1.50
+    obstacle_max_height: 0.80
     min_points_per_cell: 1
     fill_free_space: true
+
+pointcloud_to_laserscan:
+    enabled: true
+    input_topic: "lio_sam/mapping/cloud_global_dense"
+    output_topic: "/scan"
+    target_frame: "map"
+    transform_tolerance: 0.05
+    min_height: -0.50
+    max_height: 0.80
+    angle_min: -3.14159
+    angle_max: 3.14159
+    angle_increment: 0.00436
+    scan_time: 0.1
+    range_min: 0.1
+    range_max: 100.0
+    use_inf: true
+    inf_epsilon: 1.0

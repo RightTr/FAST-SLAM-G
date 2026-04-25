@@ -42,6 +42,13 @@ extern float globalMapVisualizationLeafSize;
 
 extern float mappingICPSize;
 
+extern bool denseKeyframeSliceEnable;
+extern float denseKeyframeSliceMinZ;
+extern float denseKeyframeSliceMaxZ;
+extern bool denseKeyframeSliceFlatten;
+extern bool denseKeyframeSliceUseForRecentCloud;
+extern bool denseKeyframeSliceUseForGlobalMap;
+
 extern int ikdtreeSearchNeighborNum;
 extern bool publishMapToOdomTf;
 

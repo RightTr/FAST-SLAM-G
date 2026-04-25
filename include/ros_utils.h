@@ -10,6 +10,7 @@
 #ifdef USE_ROS1
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Path.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/OccupancyGrid.h>
@@ -29,6 +30,7 @@
 
 // Message type aliases and publisher/subscriber types for ROS1
 using PointCloud2Msg = sensor_msgs::PointCloud2;
+using LaserScanMsg = sensor_msgs::LaserScan;
 using PathMsg = nav_msgs::Path;
 using OdometryMsg = nav_msgs::Odometry;
 using OccupancyGridMsg = nav_msgs::OccupancyGrid;
@@ -49,6 +51,7 @@ using OdomSubscriber = ros::Subscriber;
 using TimeType = ros::Time;
 using RateType = ros::Rate;
 using Pcl2Msg = sensor_msgs::PointCloud2;
+using LaserScanMsgConstPtr = sensor_msgs::LaserScan::ConstPtr;
 using QuaternionMsg = geometry_msgs::Quaternion;
 using PoseStampedMsgConstPtr = geometry_msgs::PoseStamped::ConstPtr;
 using ImuMsgConstPtr = sensor_msgs::Imu::ConstPtr;
@@ -63,6 +66,7 @@ using TransformStampedMsg = geometry_msgs::TransformStamped;
 #include <rclcpp/rclcpp.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -84,6 +88,7 @@ using TransformStampedMsg = geometry_msgs::TransformStamped;
 
 // Message type aliases and publisher/subscriber types for ROS2
 using PointCloud2Msg = sensor_msgs::msg::PointCloud2;
+using LaserScanMsg = sensor_msgs::msg::LaserScan;
 using PathMsg = nav_msgs::msg::Path;
 using OdometryMsg = nav_msgs::msg::Odometry;
 using OccupancyGridMsg = nav_msgs::msg::OccupancyGrid;
@@ -104,6 +109,7 @@ using OdomSubscriber = rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr;
 using TimeType = rclcpp::Time;
 using RateType = rclcpp::Rate;
 using Pcl2Msg = sensor_msgs::msg::PointCloud2;
+using LaserScanMsgConstPtr = sensor_msgs::msg::LaserScan::ConstPtr;
 using QuaternionMsg = geometry_msgs::msg::Quaternion;
 using PoseStampedMsgConstPtr = geometry_msgs::msg::PoseStamped::ConstPtr;
 using ImuMsgConstPtr = sensor_msgs::msg::Imu::ConstPtr;

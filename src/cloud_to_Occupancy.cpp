@@ -21,39 +21,32 @@ double padding = 5.0;
 double obstacle_min_height = -0.3;
 double obstacle_max_height = 1.5;
 std::string input_topic = "lio_sam/mapping/cloud_global";
+std::string input_type = "pointcloud";
 std::string output_topic = "/map";
 std::string map_frame = "map";
 
 OccupancyGridPublisher pubOccupancyGrid;
 
-void cloudCallback(const Pcl2MsgConstPtr& msg)
+template<typename StampT>
+void publishOccupancyFromHits(
+    const StampT &stamp,
+    const std::vector<std::pair<double, double>> &hits)
 {
-    pcl::PointCloud<PointType> cloud;
-    pcl::fromROSMsg(*msg, cloud);
+    if (hits.empty()) {
+        ROS_PRINT_WARN("cloud_to_occupancy: no valid hits remain after filtering");
+        return;
+    }
 
     double min_x = std::numeric_limits<double>::max();
     double min_y = std::numeric_limits<double>::max();
     double max_x = std::numeric_limits<double>::lowest();
     double max_y = std::numeric_limits<double>::lowest();
 
-    for (const auto& point : cloud.points) {
-        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
-            continue;
-        }
-        if (point.z < obstacle_min_height || point.z > obstacle_max_height) {
-            continue;
-        }
-
-        min_x = std::min(min_x, static_cast<double>(point.x));
-        min_y = std::min(min_y, static_cast<double>(point.y));
-        max_x = std::max(max_x, static_cast<double>(point.x));
-        max_y = std::max(max_y, static_cast<double>(point.y));
-    }
-
-    if (!std::isfinite(min_x) || !std::isfinite(min_y) ||
-        !std::isfinite(max_x) || !std::isfinite(max_y)) {
-        ROS_PRINT_WARN("cloud_to_occupancy: no points remain after height filtering");
-        return;
+    for (const auto &hit : hits) {
+        min_x = std::min(min_x, hit.first);
+        min_y = std::min(min_y, hit.second);
+        max_x = std::max(max_x, hit.first);
+        max_y = std::max(max_y, hit.second);
     }
 
     min_x -= padding;
@@ -67,16 +60,9 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
         std::max(1.0, std::ceil((max_y - min_y) / resolution)));
 
     std::vector<int> hit_count(width * height, 0);
-    for (const auto& point : cloud.points) {
-        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
-            continue;
-        }
-        if (point.z < obstacle_min_height || point.z > obstacle_max_height) {
-            continue;
-        }
-
-        const int cell_x = static_cast<int>(std::floor((point.x - min_x) / resolution));
-        const int cell_y = static_cast<int>(std::floor((point.y - min_y) / resolution));
+    for (const auto &hit : hits) {
+        const int cell_x = static_cast<int>(std::floor((hit.first - min_x) / resolution));
+        const int cell_y = static_cast<int>(std::floor((hit.second - min_y) / resolution));
         if (cell_x < 0 || cell_y < 0 ||
             cell_x >= static_cast<int>(width) || cell_y >= static_cast<int>(height)) {
             continue;
@@ -88,9 +74,9 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
     }
 
     OccupancyGridMsg grid;
-    grid.header.stamp = msg->header.stamp;
+    grid.header.stamp = stamp;
     grid.header.frame_id = map_frame;
-    grid.info.map_load_time = msg->header.stamp;
+    grid.info.map_load_time = stamp;
     grid.info.resolution = static_cast<float>(resolution);
     grid.info.width = width;
     grid.info.height = height;
@@ -109,9 +95,55 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
     ros_publish(pubOccupancyGrid, grid);
 }
 
+void cloudCallback(const Pcl2MsgConstPtr& msg)
+{
+    pcl::PointCloud<PointType> cloud;
+    pcl::fromROSMsg(*msg, cloud);
+    std::vector<std::pair<double, double>> hits;
+    hits.reserve(cloud.points.size());
+
+    for (const auto& point : cloud.points) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
+            continue;
+        }
+        if (point.z < obstacle_min_height || point.z > obstacle_max_height) {
+            continue;
+        }
+        hits.emplace_back(static_cast<double>(point.x), static_cast<double>(point.y));
+    }
+
+    publishOccupancyFromHits(msg->header.stamp, hits);
+}
+
+void laserScanCallback(const LaserScanMsgConstPtr& msg)
+{
+    std::vector<std::pair<double, double>> hits;
+    hits.reserve(msg->ranges.size());
+
+    double angle = msg->angle_min;
+    for (const auto &range : msg->ranges) {
+        if (!std::isfinite(range)) {
+            angle += msg->angle_increment;
+            continue;
+        }
+        if (range < msg->range_min || range > msg->range_max) {
+            angle += msg->angle_increment;
+            continue;
+        }
+
+        hits.emplace_back(
+            static_cast<double>(range) * std::cos(angle),
+            static_cast<double>(range) * std::sin(angle));
+        angle += msg->angle_increment;
+    }
+
+    publishOccupancyFromHits(msg->header.stamp, hits);
+}
+
 void readParams()
 {
     rosparam_get("occupancy_map/enabled", enabled, true);
+    rosparam_get("occupancy_map/input_type", input_type, std::string("pointcloud"));
     rosparam_get("occupancy_map/input_topic", input_topic, std::string("lio_sam/mapping/cloud_global"));
     rosparam_get("occupancy_map/output_topic", output_topic, std::string("/map"));
     rosparam_get("occupancy_map/resolution", resolution, 0.10);
@@ -148,15 +180,33 @@ int main(int argc, char** argv)
     if (!enabled) {
         ROS_PRINT_INFO("cloud_to_occupancy disabled");
     } else {
-        auto subCloud = create_subscriber<PointCloud2Msg>(input_topic, 1, cloudCallback);
-        ROS_PRINT_INFO(
-            "cloud_to_occupancy subscribed to %s, publishing %s in frame %s",
-            input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
+        if (input_type == "laserscan") {
+#ifdef USE_ROS1
+            auto subScan = create_subscriber<LaserScanMsg>(input_topic, 1, laserScanCallback);
+#elif defined(USE_ROS2)
+            auto scan_qos = rclcpp::SensorDataQoS();
+            auto subScan = create_subscriber_qos<LaserScanMsg>(input_topic, scan_qos, laserScanCallback);
+#endif
+            ROS_PRINT_INFO(
+                "cloud_to_occupancy subscribed to laserscan %s, publishing %s in frame %s",
+                input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
 
-        RateType rate(100.0);
-        while (ros_ok()) {
-            spin_once();
-            rate.sleep();
+            RateType rate(100.0);
+            while (ros_ok()) {
+                spin_once();
+                rate.sleep();
+            }
+        } else {
+            auto subCloud = create_subscriber<PointCloud2Msg>(input_topic, 1, cloudCallback);
+            ROS_PRINT_INFO(
+                "cloud_to_occupancy subscribed to pointcloud %s, publishing %s in frame %s",
+                input_topic.c_str(), output_topic.c_str(), map_frame.c_str());
+
+            RateType rate(100.0);
+            while (ros_ok()) {
+                spin_once();
+                rate.sleep();
+            }
         }
     }
 
