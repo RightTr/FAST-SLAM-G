@@ -43,12 +43,12 @@ extern float mappingICPSize;
 
 extern float scanSliceMinZ;
 extern float scanSliceMaxZ;
-extern float scanAngleMin;
-extern float scanAngleMax;
-extern float scanAngleIncrement;
-extern float scanTime;
-extern float scanRangeMin;
-extern float scanRangeMax;
+inline constexpr float scanAngleMin = -3.14159f;
+inline constexpr float scanAngleMax = 3.14159f;
+inline constexpr float scanAngleIncrement = 0.00436f;
+inline constexpr float scanTime = 0.1f;
+inline constexpr float scanRangeMin = 0.1f;
+inline constexpr float scanRangeMax = 100.0f;
 
 extern int ikdtreeSearchNeighborNum;
 extern bool occupancyMapEnabled;

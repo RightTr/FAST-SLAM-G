@@ -45,12 +45,6 @@ float mappingICPSize;
 
 float scanSliceMinZ = -1.5f;
 float scanSliceMaxZ = 0.8f;
-float scanAngleMin = -3.14159f;
-float scanAngleMax = 3.14159f;
-float scanAngleIncrement = 0.00436f;
-float scanTime = 0.1f;
-float scanRangeMin = 0.1f;
-float scanRangeMax = 100.0f;
 
 int ikdtreeSearchNeighborNum;
 bool occupancyMapEnabled = true;
