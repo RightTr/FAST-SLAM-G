@@ -92,23 +92,8 @@ zupt:
     cov_inflate_rot:   1.0e-8         # per-step rotation covariance inflation
 
 occupancy_map:
-    enabled: true
-    input_topic: "lio_sam/mapping/cloud_global_2d"
-    output_topic: "/map"
-    map_frame: "map"
     resolution: 0.05
-    padding: 5.0
-    obstacle_min_height: -0.5
-    obstacle_max_height: 1.20
-    min_points_per_cell: 1
-    fill_free_space: true
 
 pointcloud_to_laserscan:
     min_height: -0.5
     max_height: 1.20
-    angle_min: -3.14159
-    angle_max: 3.14159
-    angle_increment: 0.00436
-    scan_time: 0.1
-    range_min: 0.1
-    range_max: 100.0

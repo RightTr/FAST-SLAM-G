@@ -18,8 +18,6 @@ bool fill_free_space = true;
 int min_points_per_cell = 1;
 double resolution = 0.1;
 double padding = 5.0;
-double obstacle_min_height = -0.3;
-double obstacle_max_height = 1.5;
 std::string input_topic = "lio_sam/mapping/cloud_global_2d";
 std::string output_topic = "/map";
 std::string map_frame = "map";
@@ -105,9 +103,6 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
         if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
             continue;
         }
-        if (point.z < obstacle_min_height || point.z > obstacle_max_height) {
-            continue;
-        }
         hits.emplace_back(static_cast<double>(point.x), static_cast<double>(point.y));
     }
 
@@ -116,16 +111,7 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
 
 void readParams()
 {
-    rosparam_get("occupancy_map/enabled", enabled, true);
-    rosparam_get("occupancy_map/input_topic", input_topic, std::string("lio_sam/mapping/cloud_global_2d"));
-    rosparam_get("occupancy_map/output_topic", output_topic, std::string("/map"));
-    rosparam_get("occupancy_map/resolution", resolution, 0.10);
-    rosparam_get("occupancy_map/padding", padding, 5.0);
-    rosparam_get("occupancy_map/obstacle_min_height", obstacle_min_height, -0.30);
-    rosparam_get("occupancy_map/obstacle_max_height", obstacle_max_height, 1.50);
-    rosparam_get("occupancy_map/min_points_per_cell", min_points_per_cell, 1);
-    rosparam_get("occupancy_map/fill_free_space", fill_free_space, true);
-    rosparam_get("occupancy_map/map_frame", map_frame, std::string("map"));
+    rosparam_get("occupancy_map/resolution", resolution, resolution);
 }
 
 int main(int argc, char** argv)

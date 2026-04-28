@@ -43,14 +43,14 @@ float globalMapVisualizationLeafSize;
 
 float mappingICPSize;
 
-float scanSliceMinZ;
-float scanSliceMaxZ;
-float scanAngleMin;
-float scanAngleMax;
-float scanAngleIncrement;
-float scanTime;
-float scanRangeMin;
-float scanRangeMax;
+float scanSliceMinZ = -1.5f;
+float scanSliceMaxZ = 0.8f;
+float scanAngleMin = -3.14159f;
+float scanAngleMax = 3.14159f;
+float scanAngleIncrement = 0.00436f;
+float scanTime = 0.1f;
+float scanRangeMin = 0.1f;
+float scanRangeMax = 100.0f;
 
 int ikdtreeSearchNeighborNum;
 bool occupancyMapEnabled = true;
@@ -82,7 +82,6 @@ void read_liosam_params() {
     rosparam_get("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0f);
 
     rosparam_get("lio_sam/mappingICPSize", mappingICPSize, 0.2f);
-    rosparam_get("occupancy_map/enabled", occupancyMapEnabled, true);
     rosparam_get("lio_sam/ikdtreeSearchNeighborNum", ikdtreeSearchNeighborNum, 8);
 }
 
@@ -95,14 +94,8 @@ void read_frame_params() {
 }
 
 void read_pcl2scan_params() {
-    rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, -1.5f);
-    rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, 0.8f);
-    rosparam_get("pointcloud_to_laserscan/angle_min", scanAngleMin, -3.14159f);
-    rosparam_get("pointcloud_to_laserscan/angle_max", scanAngleMax, 3.14159f);
-    rosparam_get("pointcloud_to_laserscan/angle_increment", scanAngleIncrement, 0.00436f);
-    rosparam_get("pointcloud_to_laserscan/scan_time", scanTime, 0.1f);
-    rosparam_get("pointcloud_to_laserscan/range_min", scanRangeMin, 0.1f);
-    rosparam_get("pointcloud_to_laserscan/range_max", scanRangeMax, 100.0f);
+    rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, scanSliceMinZ);
+    rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, scanSliceMaxZ);
 }
 
 void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,
