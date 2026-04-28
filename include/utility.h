@@ -41,7 +41,6 @@ extern float globalMapVisualizationLeafSize;
 
 extern float mappingICPSize;
 
-extern bool scanSliceEnable;
 extern float scanSliceMinZ;
 extern float scanSliceMaxZ;
 extern float scanAngleMin;
@@ -75,34 +74,13 @@ inline Eigen::Quaterniond transformOrientationOdomToMap(const Eigen::Quaterniond
 }
 
 template<typename PointT>
-inline PointT transformPointOdomToMap(const PointT &point)
+inline void transformPointOdomToMapInPlace(PointT &point)
 {
-    PointT mapped = point;
     const Eigen::Vector3d position =
         transformPositionOdomToMap(Eigen::Vector3d(point.x, point.y, point.z));
-    mapped.x = position.x();
-    mapped.y = position.y();
-    mapped.z = position.z();
-    return mapped;
-}
-
-template<typename PointT>
-inline void transformPointOdomToMap(
-    const PointT *point_in,
-    PointT *point_out)
-{
-    *point_out = transformPointOdomToMap(*point_in);
-}
-
-template<typename PointT>
-inline typename pcl::PointCloud<PointT>::Ptr transformCloudOdomToMap(
-    const typename pcl::PointCloud<PointT>::Ptr &cloudIn)
-{
-    typename pcl::PointCloud<PointT>::Ptr cloudOut(new pcl::PointCloud<PointT>());
-    cloudOut->resize(cloudIn->size());
-    for (std::size_t i = 0; i < cloudIn->points.size(); ++i)
-        cloudOut->points[i] = transformPointOdomToMap(cloudIn->points[i]);
-    return cloudOut;
+    point.x = position.x();
+    point.y = position.y();
+    point.z = position.z();
 }
 
 template<typename T>

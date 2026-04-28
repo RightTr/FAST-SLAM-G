@@ -43,7 +43,6 @@ float globalMapVisualizationLeafSize;
 
 float mappingICPSize;
 
-bool scanSliceEnable;
 float scanSliceMinZ;
 float scanSliceMaxZ;
 float scanAngleMin;
@@ -96,7 +95,6 @@ void read_frame_params() {
 }
 
 void read_pcl2scan_params() {
-    rosparam_get("pointcloud_to_laserscan/slice_enable", scanSliceEnable, true);
     rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, -1.5f);
     rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, 0.8f);
     rosparam_get("pointcloud_to_laserscan/angle_min", scanAngleMin, -3.14159f);

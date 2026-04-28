@@ -85,12 +85,6 @@ int    zupt_inflate_start      = 200;
 // Adaptive LiDAR weight params
 double lidar_cov_static_scale  = 5.0;
 double lidar_residual_ref      = 0.05;
-double frontend_scan_angle_min = -M_PI;
-double frontend_scan_angle_max = M_PI;
-double frontend_scan_angle_increment = 0.00436;
-double frontend_scan_time = 0.1;
-double frontend_scan_range_min = 0.1;
-double frontend_scan_range_max = 100.0;
 string frontend_scan_topic = "/frontend_scan";
 
 const M3D IMU_FLIP_R = (M3D() <<
@@ -671,7 +665,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
             RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
                                 &laserCloudWorld->points[i]);
             if (publish_in_map)
-                transformPointOdomToMap(&laserCloudWorld->points[i], &laserCloudWorld->points[i]);
+                transformPointOdomToMapInPlace(laserCloudWorld->points[i]);
         }
         Pcl2Msg laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
@@ -790,12 +784,12 @@ void publish_frontend_scan(
     LaserScanMsg scan_msg;
     scan_msg.header.stamp = get_ros_time(scan_stamp);
     scan_msg.header.frame_id = published_pose_frame_id();
-    scan_msg.angle_min = static_cast<float>(frontend_scan_angle_min);
-    scan_msg.angle_max = static_cast<float>(frontend_scan_angle_max);
-    scan_msg.angle_increment = static_cast<float>(frontend_scan_angle_increment);
-    scan_msg.scan_time = static_cast<float>(frontend_scan_time);
-    scan_msg.range_min = static_cast<float>(frontend_scan_range_min);
-    scan_msg.range_max = static_cast<float>(frontend_scan_range_max);
+    scan_msg.angle_min = scanAngleMin;
+    scan_msg.angle_max = scanAngleMax;
+    scan_msg.angle_increment = scanAngleIncrement;
+    scan_msg.scan_time = scanTime;
+    scan_msg.range_min = scanRangeMin;
+    scan_msg.range_max = scanRangeMax;
 
     const int beam_count = std::max(1, static_cast<int>(
         std::ceil((scan_msg.angle_max - scan_msg.angle_min) / scan_msg.angle_increment)));
@@ -813,7 +807,7 @@ void publish_frontend_scan(
         if (!publish_use_lidar_frame)
             frame_point = imu_point;
 
-        if (scanSliceEnable && (slice_point.z < scanSliceMinZ || slice_point.z > scanSliceMaxZ))
+        if (slice_point.z < scanSliceMinZ || slice_point.z > scanSliceMaxZ)
             continue;
 
         const float range = std::hypot(frame_point.x, frame_point.y);
@@ -844,7 +838,7 @@ void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
         RGBpointBodyToWorld(&laserCloudOri->points[i], \
                             &laserCloudWorld->points[i]);
         if (publish_in_map)
-            transformPointOdomToMap(&laserCloudWorld->points[i], &laserCloudWorld->points[i]);
+            transformPointOdomToMapInPlace(laserCloudWorld->points[i]);
     }
     Pcl2Msg laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
@@ -859,9 +853,9 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
     PointCloudXYZI::Ptr mappedCloud;
     if (global_frame_id() == mapFrame)
     {
-        mappedCloud.reset(new PointCloudXYZI(featsFromMap->size(), 1));
-        for (std::size_t i = 0; i < featsFromMap->points.size(); ++i)
-            transformPointOdomToMap(&featsFromMap->points[i], &mappedCloud->points[i]);
+        mappedCloud.reset(new PointCloudXYZI(*featsFromMap));
+        for (auto &point : mappedCloud->points)
+            transformPointOdomToMapInPlace(point);
         mapCloud = mappedCloud;
     }
 
@@ -1185,12 +1179,6 @@ int main(int argc, char** argv)
     read_frame_params();
     read_pcl2scan_params();
     if (sam_enable) read_liosam_params();
-    frontend_scan_angle_min = scanAngleMin;
-    frontend_scan_angle_max = scanAngleMax;
-    frontend_scan_angle_increment = scanAngleIncrement;
-    frontend_scan_time = scanTime;
-    frontend_scan_range_min = scanRangeMin;
-    frontend_scan_range_max = scanRangeMax;
 
     #ifdef USE_ROS1
     path.header.stamp = get_ros_now();
@@ -1287,8 +1275,7 @@ int main(int argc, char** argv)
     #ifdef USE_ROS1
     auto pubFrontendScan = create_publisher<LaserScanMsg>(frontend_scan_topic, 50);
     #elif defined(USE_ROS2)
-    auto frontend_scan_qos = rclcpp::SensorDataQoS();
-    auto pubFrontendScan = create_publisher_qos<LaserScanMsg>(frontend_scan_topic, frontend_scan_qos);
+    auto pubFrontendScan = create_publisher_qos<LaserScanMsg>(frontend_scan_topic, rclcpp::SensorDataQoS());
     #endif
     #ifdef USE_ROS1
     int odom_qos = 0;  // ROS1 ignores this parameter

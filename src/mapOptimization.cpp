@@ -266,16 +266,7 @@ PointType transformFrontendPointToImu(const pcl::PointXYZINormal &pt)
 
 bool keepDenseKeyframePoint(const PointType &point)
 {
-    if (!scanSliceEnable)
-        return true;
     return point.z >= scanSliceMinZ && point.z <= scanSliceMaxZ;
-}
-
-PointType projectDenseKeyframePoint2D(const PointType &point)
-{
-    PointType projected = point;
-    projected.z = 0.0f;
-    return projected;
 }
 
 pcl::PointCloud<PointType>::Ptr projectDenseKeyframeToScan2D(
@@ -655,9 +646,11 @@ void saveKeyFramesAndFactor(
     }
 
     for (const auto &pt : feats_undistort->points) {
-        const PointType point = transformFrontendPointToImu(pt);
-        if (keepDenseKeyframePoint(point))
-            denseCloudKeyFrame->push_back(projectDenseKeyframePoint2D(point));
+        PointType point = transformFrontendPointToImu(pt);
+        if (keepDenseKeyframePoint(point)) {
+            point.z = 0.0f;
+            denseCloudKeyFrame->push_back(point);
+        }
     }
 
     denseCloudKeyFrame = projectDenseKeyframeToScan2D(denseCloudKeyFrame);
@@ -732,8 +725,11 @@ void publishSamMsg()
     // publish key poses
     pcl::PointCloud<PointType>::Ptr keyPosesMap(new pcl::PointCloud<PointType>());
     keyPosesMap->reserve(cloudKeyPoses3D->points.size());
-    for (const auto &pose : cloudKeyPoses3D->points)
-        keyPosesMap->push_back(transformPointOdomToMap(pose));
+    for (const auto &pose : cloudKeyPoses3D->points) {
+        PointType mapped_pose = pose;
+        transformPointOdomToMapInPlace(mapped_pose);
+        keyPosesMap->push_back(mapped_pose);
+    }
     publishCloud(pubKeyPoses, keyPosesMap, timeLaserInfoStamp, mapFrame);
     if (ros_subscription_count(pubPath) != 0)
     {
@@ -747,7 +743,10 @@ void publishSamMsg()
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
         PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
         *cloudOut += *transformPointCloud(featCloudKeyFrames.back(), &thisPose6D);
-        publishCloud(pubRecentKeyFrame, transformCloudOdomToMap<PointType>(cloudOut), timeLaserInfoStamp, mapFrame);
+        pcl::PointCloud<PointType>::Ptr mappedCloud(new pcl::PointCloud<PointType>(*cloudOut));
+        for (auto &point : mappedCloud->points)
+            transformPointOdomToMapInPlace(point);
+        publishCloud(pubRecentKeyFrame, mappedCloud, timeLaserInfoStamp, mapFrame);
     }
 }
 
@@ -787,13 +786,15 @@ void visualizeLoopClosure()
         int key_cur = it->first;
         int key_pre = it->second;
         PointMsg p;
-        const PointType point_cur = transformPointOdomToMap(copy_cloudKeyPoses3D->points[key_cur]);
+        PointType point_cur = copy_cloudKeyPoses3D->points[key_cur];
+        transformPointOdomToMapInPlace(point_cur);
         p.x = point_cur.x;
         p.y = point_cur.y;
         p.z = point_cur.z;
         markerNode.points.push_back(p);
         markerEdge.points.push_back(p);
-        const PointType point_pre = transformPointOdomToMap(copy_cloudKeyPoses3D->points[key_pre]);
+        PointType point_pre = copy_cloudKeyPoses3D->points[key_pre];
+        transformPointOdomToMapInPlace(point_pre);
         p.x = point_pre.x;
         p.y = point_pre.y;
         p.z = point_pre.z;
@@ -875,11 +876,19 @@ void publishGlobalMap() {
         downSizeFilterGlobalMapKeyFrames.setLeafSize(globalMapVisualizationLeafSize, globalMapVisualizationLeafSize, globalMapVisualizationLeafSize); // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
         downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
-        publishCloud(pubLaserCloudGlobal, transformCloudOdomToMap<PointType>(globalMapKeyFramesDS), timeLaserInfoStamp, mapFrame);
+        pcl::PointCloud<PointType>::Ptr mappedGlobalMapKeyFramesDS(
+            new pcl::PointCloud<PointType>(*globalMapKeyFramesDS));
+        for (auto &point : mappedGlobalMapKeyFramesDS->points)
+            transformPointOdomToMapInPlace(point);
+        publishCloud(pubLaserCloudGlobal, mappedGlobalMapKeyFramesDS, timeLaserInfoStamp, mapFrame);
     }
     if (need_dense_global) {
+        pcl::PointCloud<PointType>::Ptr mappedGlobalMapDenseKeyFrames(
+            new pcl::PointCloud<PointType>(*globalMapDenseKeyFrames));
+        for (auto &point : mappedGlobalMapDenseKeyFrames->points)
+            transformPointOdomToMapInPlace(point);
         PointCloud2Msg denseCloudMsg;
-        pcl::toROSMsg(*transformCloudOdomToMap<PointType>(globalMapDenseKeyFrames), denseCloudMsg);
+        pcl::toROSMsg(*mappedGlobalMapDenseKeyFrames, denseCloudMsg);
         denseCloudMsg.header.stamp = timeLaserInfoStamp;
         denseCloudMsg.header.frame_id = mapFrame;
         ros_publish(pubLaserCloudGlobalDense, denseCloudMsg);
