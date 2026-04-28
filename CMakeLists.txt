@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fast_lio_sam)
+project(fast_slam_g)
 
 set(CMAKE_BUILD_TYPE Release)
 

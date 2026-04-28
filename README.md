@@ -60,7 +60,7 @@ git submodule update --init --recursive
 cd fastlio_ws
 source devel/setup.bash
 # e.g.
-roslaunch fast_lio_sam sam_airy.launch
+roslaunch fast_slam_g sam_airy.launch
 ```
 
 ### GridMap Pipeline
@@ -71,7 +71,7 @@ For navigation-oriented usage, the recommended entry is the GridMap pipeline. It
 # ROS2
 cd fastlio_ws
 source install/setup.bash
-ros2 launch fast_lio_sam gridmap_mid360.launch.py
+ros2 launch fast_slam_g gridmap_mid360.launch.py
 ```
 
 ### Relocalization
@@ -85,13 +85,13 @@ Run relocalization mode:
 # ROS1
 cd fastlio_ws
 source devel/setup.bash
-roslaunch fast_lio_sam reloc_mid360.launch
+roslaunch fast_slam_g reloc_mid360.launch
 # Publish geometry_msgs::PoseStamped to the /reloc_topic
 
 # ROS2
 cd fastlio_ws
 source install/setup.bash
-ros2 launch fast_lio_sam reloc_mid360.launch.py
+ros2 launch fast_slam_g reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
@@ -144,7 +144,7 @@ Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., Ro
 
 ```bash
 # e.g.
-roslaunch fast_lio_sam mapping_airy.launch
+roslaunch fast_slam_g mapping_airy.launch
 ```
 
 ## 📝 TODO List
@@ -162,7 +162,7 @@ roslaunch fast_lio_sam mapping_airy.launch
 
 [FAST-LIO official repository](https://github.com/hku-mars/FAST_LIO.git)
 
-[FAST_LIO_SAM](https://github.com/kahowang/FAST_LIO_SAM.git)
+[fast_slam_g](https://github.com/kahowang/fast_slam_g.git)
 
 [LIO-SAM](https://github.com/TixiaoShan/LIO-SAM.git)
 
