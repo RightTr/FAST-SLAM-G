@@ -23,7 +23,7 @@ def load_ros1_yaml_as_params(yaml_file_path):
 
 
 def generate_launch_description():
-    package_share = get_package_share_directory("fast_slam_g")
+    package_share = get_package_share_directory("fast_lio_sam_g")
     rviz_cfg = os.path.join(package_share, "rviz_cfg", "grid_ros2.rviz")
     config_file = os.path.join(package_share, "config", "gridmap", "mid360.yaml")
     yaml_params = load_ros1_yaml_as_params(config_file)
@@ -40,8 +40,8 @@ def generate_launch_description():
         yaml_params,
     ]
 
-    fast_slam_g = Node(
-        package="fast_slam_g",
+    fast_lio_sam_g = Node(
+        package="fast_lio_sam_g",
         executable="fastlio_mapping",
         name="fast_lio_gridmap",
         output="screen",
@@ -49,7 +49,7 @@ def generate_launch_description():
     )
 
     cloud_to_occupancy = Node(
-        package="fast_slam_g",
+        package="fast_lio_sam_g",
         executable="cloud_to_occupancy",
         name="cloud_to_occupancy",
         output="screen",
@@ -65,7 +65,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        fast_slam_g,
+        fast_lio_sam_g,
         cloud_to_occupancy,
         fast_lio_rviz,
     ])

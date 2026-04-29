@@ -1,4 +1,4 @@
-# FAST-SLAM-G
+# FAST-LIO-SAM-G
 
 A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, and further provides a **GridMap** projection pipeline for navigation, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**. The repository is based on [FAST-LIO-SAM](https://github.com/RightTr/FAST-LIO-SAM.git).
 
@@ -54,7 +54,7 @@ git submodule update --init --recursive
 cd fastlio_ws
 source devel/setup.bash
 # e.g.
-roslaunch fast_slam_g sam_airy.launch
+roslaunch fast_lio_sam_g sam_airy.launch
 ```
 
 ### GridMap Pipeline
@@ -65,7 +65,7 @@ For navigation-oriented usage, the recommended entry is the GridMap pipeline. It
 # ROS2
 cd fastlio_ws
 source install/setup.bash
-ros2 launch fast_slam_g gridmap_mid360.launch.py
+ros2 launch fast_lio_sam_g gridmap_mid360.launch.py
 ```
 
 ### Relocalization
@@ -79,13 +79,13 @@ Run relocalization mode:
 # ROS1
 cd fastlio_ws
 source devel/setup.bash
-roslaunch fast_slam_g reloc_mid360.launch
+roslaunch fast_lio_sam_g reloc_mid360.launch
 # Publish geometry_msgs::PoseStamped to the /reloc_topic
 
 # ROS2
 cd fastlio_ws
 source install/setup.bash
-ros2 launch fast_slam_g reloc_mid360.launch.py
+ros2 launch fast_lio_sam_g reloc_mid360.launch.py
 # Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
 ```
 
@@ -146,7 +146,7 @@ Set `gridmap/map_path` to a directory path. When LIO-SAM backend is enabled, set
 
 [FAST-LIO official repository](https://github.com/hku-mars/FAST_LIO.git)
 
-[fast_slam_g](https://github.com/kahowang/fast_slam_g.git)
+[fast_lio_sam_g](https://github.com/kahowang/fast_lio_sam_g.git)
 
 [LIO-SAM](https://github.com/TixiaoShan/LIO-SAM.git)
 

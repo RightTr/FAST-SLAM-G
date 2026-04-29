@@ -1106,12 +1106,12 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 int main(int argc, char** argv)
 {
     #ifdef USE_ROS1
-    ros::init(argc, argv, "fast_slam_g");
+    ros::init(argc, argv, "fast_lio_sam_g");
     init_ros_node();
     
     #elif defined(USE_ROS2)
     rclcpp::init(argc, argv);
-    init_ros_node(rclcpp::Node::make_shared("fast_slam_g"));
+    init_ros_node(rclcpp::Node::make_shared("fast_lio_sam_g"));
     #endif
 
     // Load parameters (unified ROS1/ROS2)

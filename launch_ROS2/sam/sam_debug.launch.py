@@ -23,12 +23,12 @@ def load_ros1_yaml_as_params(yaml_file_path):
     
     return flatten_dict(config)
 
-rviz_cfg = os.path.join(get_package_share_directory("fast_slam_g"), "rviz_cfg", "sam_ros2.rviz" )
+rviz_cfg = os.path.join(get_package_share_directory("fast_lio_sam_g"), "rviz_cfg", "sam_ros2.rviz" )
 
 print(rviz_cfg)
 
 config_file = os.path.join(
-    get_package_share_directory("fast_slam_g"), "config", "sam", "mid360.yaml"
+    get_package_share_directory("fast_lio_sam_g"), "config", "sam", "mid360.yaml"
 )
 
 # Load ROS1 format YAML and convert params
@@ -47,8 +47,8 @@ fast_lio_params = [
 ]
 
 def generate_launch_description():
-    fast_slam_g = Node(
-        package='fast_slam_g',
+    fast_lio_sam_g = Node(
+        package='fast_lio_sam_g',
         executable='fastlio_mapping',
         output='screen',
         parameters=fast_lio_params,
@@ -64,6 +64,6 @@ def generate_launch_description():
     )
     
     return LaunchDescription([
-        fast_slam_g,
+        fast_lio_sam_g,
         fast_lio_rviz
     ])

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>fast_slam_g</name>
+  <name>fast_lio_sam_g</name>
   <version>0.0.0</version>
 
   <description>

@@ -1,5 +1,5 @@
-#ifndef fast_slam_g_ROS_UTILS_H
-#define fast_slam_g_ROS_UTILS_H
+#ifndef fast_lio_sam_g_ROS_UTILS_H
+#define fast_lio_sam_g_ROS_UTILS_H
 
 #include <cmath>
 #include <cstddef>
@@ -24,7 +24,7 @@
 #include <geometry_msgs/Vector3.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <livox_ros_driver2/CustomMsg.h>
-#include <fast_slam_g/Pose6D.h>
+#include <fast_lio_sam_g/Pose6D.h>
 #include <eigen_conversions/eigen_msg.h>
 #include <tf/transform_broadcaster.h>
 
@@ -36,7 +36,7 @@ using OdometryMsg = nav_msgs::Odometry;
 using OccupancyGridMsg = nav_msgs::OccupancyGrid;
 using OdometryMsgConstPtr = nav_msgs::Odometry::ConstPtr;
 using OdomMsg = nav_msgs::Odometry;
-using Pose6D = fast_slam_g::Pose6D;
+using Pose6D = fast_lio_sam_g::Pose6D;
 using MarkerMsg = visualization_msgs::Marker;
 using MarkerArrayMsg = visualization_msgs::MarkerArray;
 using PointMsg = geometry_msgs::Point;
@@ -82,7 +82,7 @@ using TransformStampedMsg = geometry_msgs::TransformStamped;
 #include <geometry_msgs/msg/vector3.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
-#include <fast_slam_g/msg/pose6_d.hpp>
+#include <fast_lio_sam_g/msg/pose6_d.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -94,7 +94,7 @@ using OdometryMsg = nav_msgs::msg::Odometry;
 using OccupancyGridMsg = nav_msgs::msg::OccupancyGrid;
 using OdometryMsgConstPtr = nav_msgs::msg::Odometry::ConstSharedPtr;
 using OdomMsg = nav_msgs::msg::Odometry;
-using Pose6D = fast_slam_g::msg::Pose6D;
+using Pose6D = fast_lio_sam_g::msg::Pose6D;
 using MarkerMsg = visualization_msgs::msg::Marker;
 using MarkerArrayMsg = visualization_msgs::msg::MarkerArray;
 using PointMsg = geometry_msgs::msg::Point;
@@ -149,7 +149,7 @@ inline void ROS_PRINT_WARN(const char *fmt, ...) {
 #ifdef USE_ROS1
     ROS_WARN("%s", msg);
 #elif defined(USE_ROS2)
-    RCLCPP_WARN(rclcpp::get_logger("fast_slam_g"), "%s", msg);
+    RCLCPP_WARN(rclcpp::get_logger("fast_lio_sam_g"), "%s", msg);
 #endif
 }
 
@@ -162,7 +162,7 @@ inline void ROS_PRINT_ERROR(const char *fmt, ...) {
 #ifdef USE_ROS1
     ROS_ERROR("%s", msg);
 #elif defined(USE_ROS2)
-    RCLCPP_ERROR(rclcpp::get_logger("fast_slam_g"), "%s", msg);
+    RCLCPP_ERROR(rclcpp::get_logger("fast_lio_sam_g"), "%s", msg);
 #endif
 }
 
@@ -175,7 +175,7 @@ inline void ROS_PRINT_INFO(const char *fmt, ...) {
 #ifdef USE_ROS1
     ROS_INFO("%s", msg);
 #elif defined(USE_ROS2)
-    RCLCPP_INFO(rclcpp::get_logger("fast_slam_g"), "%s", msg);
+    RCLCPP_INFO(rclcpp::get_logger("fast_lio_sam_g"), "%s", msg);
 #endif
 }
 
@@ -322,7 +322,7 @@ inline void init_ros_node(const rclcpp::Node::SharedPtr &node = nullptr) {
         if (node) {
             g_ros_node = node;
         } else {
-            g_ros_node = rclcpp::Node::make_shared("fast_slam_g");
+            g_ros_node = rclcpp::Node::make_shared("fast_lio_sam_g");
         }
     }
 }
