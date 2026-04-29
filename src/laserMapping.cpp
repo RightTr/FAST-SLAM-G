@@ -874,14 +874,6 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 
         ros_publish(pubOdomHighFreq, msg);
 
-        if (frame_save_en && imu_pose_file)
-        {
-            imu_pose_file << pose._timestamp << " "
-                << pose._x << " " << pose._y << " " << pose._z << " "
-                << pose._qx << " " << pose._qy << " " << pose._qz << " " << pose._qw << "\n";
-            imu_pose_file.flush();
-        }
-
         TransformStampedMsg tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = odometryFrame;
@@ -900,6 +892,14 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         static tf2_ros::TransformBroadcaster br_hf(get_ros_node());
 #endif
         br_hf.sendTransform(tf_msg);
+
+        if (frame_save_en && imu_pose_file)
+        {
+            imu_pose_file << pose._timestamp << " "
+                << pose._x << " " << pose._y << " " << pose._z << " "
+                << pose._qx << " " << pose._qy << " " << pose._qz << " " << pose._qw << "\n";
+            imu_pose_file.flush();
+        }
     }
 }
 
