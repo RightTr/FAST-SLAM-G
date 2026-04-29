@@ -728,22 +728,6 @@ void save_scan_frame(const string& scan_frames_dir)
     scan_frame_idx++;
 }
 
-void save_imu_pose(PoseBuffer& pbuffer)
-{
-    while (ros_ok() && !flg_exit){
-        Pose pose;
-        if (!pbuffer.TryPop(pose))
-        {
-            usleep(1000);
-            continue;
-        }
-        imu_pose_file << pose._timestamp << " "
-            << pose._x << " " << pose._y << " " << pose._z << " "
-        << pose._qx << " " << pose._qy << " " << pose._qz << " " << pose._qw << "\n";
-        imu_pose_file.flush();
-    }
-}
-
 void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
 {
     Pcl2Msg laserCloudmsg;
@@ -889,6 +873,14 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         set_geometry_pose(msg.pose.pose, published_pose);
 
         ros_publish(pubOdomHighFreq, msg);
+
+        if (frame_save_en && imu_pose_file)
+        {
+            imu_pose_file << pose._timestamp << " "
+                << pose._x << " " << pose._y << " " << pose._z << " "
+                << pose._qx << " " << pose._qy << " " << pose._qz << " " << pose._qw << "\n";
+            imu_pose_file.flush();
+        }
 
         TransformStampedMsg tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
@@ -1248,13 +1240,21 @@ int main(int argc, char** argv)
     const string imu_poses_dir = root_dir + "/IMU_POSES/";
     if (frame_save_en)
     {
-        string scan_frame_pose_path = scan_frames_dir + "poses.txt";
-        scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
-        scan_frame_pose_file << std::fixed << std::setprecision(9);
+        if (!create_directory(scan_frames_dir + "scans/") || !create_directory(imu_poses_dir))
+        {
+            ROS_PRINT_ERROR("Failed to create frame save directories, disable frame_save_en");
+            frame_save_en = false;
+        }
+        else
+        {
+            string scan_frame_pose_path = scan_frames_dir + "poses.txt";
+            scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
+            scan_frame_pose_file << std::fixed << std::setprecision(9);
 
-        string imu_pose_path = imu_poses_dir + "poses.txt";
-        imu_pose_file.open(imu_pose_path.c_str(), ios::out | ios::app);
-        imu_pose_file << std::fixed << std::setprecision(9);
+            string imu_pose_path = imu_poses_dir + "poses.txt";
+            imu_pose_file.open(imu_pose_path.c_str(), ios::out | ios::app);
+            imu_pose_file << std::fixed << std::setprecision(9);
+        }
     }
 
     ofstream fout_pre, fout_out, fout_dbg;
@@ -1318,12 +1318,6 @@ int main(int argc, char** argv)
     {
         loopthread = std::thread(&loopClosureThread);
         globalthread = std::thread(&visualizeGlobalMapThread);
-    }
-
-    std::thread savethread;
-    if (frame_save_en)
-    {
-        savethread = std::thread(&save_imu_pose, std::ref(p_imu->savebuffer));
     }
 
 //------------------------------------------------------------------------------------------------------
@@ -1604,10 +1598,6 @@ int main(int argc, char** argv)
     if (globalthread.joinable()) {
         globalthread.join();
     }
-    if (savethread.joinable()) {
-        savethread.join();
-    }
-
     if (sam_enable && map_save)
     {
         if (exportKeyframeMap2D(map_path))
