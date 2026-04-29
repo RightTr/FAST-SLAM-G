@@ -132,12 +132,6 @@ The current design assumes:
 
 Set `gridmap/map_path` to a directory path. When LIO-SAM backend is enabled, set `gridmap/map_save` to `true` to save the keyframe map during shutdown. Set `gridmap/map_load` to `true` to load the saved keyframe map during startup.
 
-
-```bash
-# e.g.
-roslaunch fast_slam_g mapping_airy.launch
-```
-
 ## 📝 TODO List
 
 * [x] GridMap projection pipeline
