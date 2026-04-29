@@ -1,22 +1,16 @@
 # FAST-SLAM-G
 
-A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, and further provides a **GridMap** projection pipeline for navigation, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**.
+A LiDAR-inertial SLAM system that integrates **FAST-LIO2** as the high-frequency frontend with a **LIO-SAM-style** factor graph backend for global optimization, and further provides a **GridMap** projection pipeline for navigation, supporting **RoboSense LiDARs**, **Unilidar LiDARs**, and compatible with both **ROS1** and **ROS2**. The repository is based on [FAST-LIO-SAM](https://github.com/RightTr/FAST-LIO-SAM.git).
 
 ## 🧩 Contributions
 
 * A SLAM system that integrates FAST-LIO2 with a LIO-SAM-style factor graph backend.
-
-* ROS1 and ROS2 adaptation
-
-* High-frequency odometry via IMU propagation between LiDAR scans
 
 * Manual initial pose setting for relocalization
 
 * Stationary detection and adaptive weight handling between LiDAR update scans and ZUPT
 
 * Online GridMap projection from optimized global point cloud to 2D `OccupancyGrid`
-
-* Support for RoboSense LiDARs, Unilidar LiDARs
 
 ## 🛠️ Prerequisites
 
@@ -124,10 +118,6 @@ zupt:
     cov_inflate_rot:   1.0e-8         # per-step rotation covariance inflation
 ```
 
-### High frequency odometry via IMU propagation between LiDAR scans
-
-Subscribe the topic */OdometryHighFreq* to receive high frequency odometry output via IMU propagation between LiDAR scans.
-
 ### GridMap
 
 The GridMap node projects the optimized global point cloud to `/map` as a 2D `OccupancyGrid`.
@@ -142,9 +132,6 @@ The current design assumes:
 
 Set `gridmap/map_path` to a directory path. When LIO-SAM backend is enabled, set `gridmap/map_save` to `true` to save the keyframe map during shutdown. Set `gridmap/map_load` to `true` to load the saved keyframe map during startup.
 
-### Extended LiDAR support
-
-Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy) and Unilidar LiDARs (e.g., Unilidar L2). Check the related files in ./config and ./launch folder.
 
 ```bash
 # e.g.
@@ -154,6 +141,7 @@ roslaunch fast_slam_g mapping_airy.launch
 ## 📝 TODO List
 
 * [x] GridMap projection pipeline
+* [ ] GridMap ROS1 adaptation
 * [ ] Incremental GridMap update optimization
 
 ## 📚 Related Works
