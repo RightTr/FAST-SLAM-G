@@ -52,7 +52,7 @@ mutex mtx_buffer;
 condition_variable sig_buffer;
 
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic;
+string map_path, lid_topic, imu_topic;
 string reloc_topic;
 
 double res_mean_last = 0.05, total_residual = 0.0;
@@ -70,6 +70,8 @@ bool   frontend_scan_pub_en = true;
 bool   publish_use_lidar_frame = false;
 bool reloc_en = false;
 bool sam_enable = false;
+bool map_load = false;
+bool map_save = false;
 bool imu_flip = false;
 int lidar_type;
 bool use_zupt = false;
@@ -1133,7 +1135,9 @@ int main(int argc, char** argv)
     rosparam_get("frontend_scan/topic", frontend_scan_topic, std::string("/frontend_scan"));
     rosparam_get("reloc/reloc_en", reloc_en, false);
     rosparam_get("max_iteration", NUM_MAX_ITERATIONS, 4);
-    rosparam_get("map_file_path", map_file_path, std::string(""));
+    rosparam_get("keyframe_map/map_path", map_path, std::string(""));
+    rosparam_get("keyframe_map/map_load", map_load, false);
+    rosparam_get("keyframe_map/map_save", map_save, false);
     rosparam_get("common/lid_topic", lid_topic, std::string("/livox/lidar"));
     rosparam_get("common/imu_topic", imu_topic, std::string("/livox/imu"));
     rosparam_get("reloc/reloc_topic", reloc_topic, std::string("/reloc/manual"));
@@ -1175,6 +1179,8 @@ int main(int argc, char** argv)
     rosparam_get("zupt/cov_inflate_start",       zupt_inflate_start,      200);
     rosparam_get("zupt/lidar_cov_static_scale",  lidar_cov_static_scale,  5.0);
     rosparam_get("zupt/lidar_residual_ref",      lidar_residual_ref,      0.05);
+
+    if (map_path.empty()) map_path = root_dir;
 
     read_frame_params();
     read_pcl2scan_params();
@@ -1239,16 +1245,17 @@ int main(int argc, char** argv)
     fp = fopen(pos_log_dir.c_str(),"w");
     
     const string scan_frames_dir = root_dir + "/SCAN_FRAMES/";
-    create_directory(scan_frames_dir + "scans/");
-    string scan_frame_pose_path = scan_frames_dir + "poses.txt";
-    scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
-    scan_frame_pose_file << std::fixed << std::setprecision(9);
-
     const string imu_poses_dir = root_dir + "/IMU_POSES/";
-    create_directory(imu_poses_dir);
-    string imu_pose_path = imu_poses_dir + "poses.txt";
-    imu_pose_file.open(imu_pose_path.c_str(), ios::out | ios::app);
-    imu_pose_file << std::fixed << std::setprecision(9);
+    if (frame_save_en)
+    {
+        string scan_frame_pose_path = scan_frames_dir + "poses.txt";
+        scan_frame_pose_file.open(scan_frame_pose_path.c_str(), ios::out | ios::app);
+        scan_frame_pose_file << std::fixed << std::setprecision(9);
+
+        string imu_pose_path = imu_poses_dir + "poses.txt";
+        imu_pose_file.open(imu_pose_path.c_str(), ios::out | ios::app);
+        imu_pose_file << std::fixed << std::setprecision(9);
+    }
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -1291,8 +1298,14 @@ int main(int argc, char** argv)
 
     if (sam_enable) {
         MapOptimizationInit();
+        if (map_load)
+        {
+            if (importKeyframeMap2D(map_path))
+                ROS_PRINT_INFO("Loaded keyframe map from %s", map_path.c_str());
+            else
+                ROS_PRINT_WARN("Failed to load keyframe map from %s", map_path.c_str());
+        }
         printf("...... LIO-SAM Backend Start......\n");
-
     }
 
     std::thread odomhighthread([&](){
@@ -1593,6 +1606,14 @@ int main(int argc, char** argv)
     }
     if (savethread.joinable()) {
         savethread.join();
+    }
+
+    if (sam_enable && map_save)
+    {
+        if (exportKeyframeMap2D(map_path))
+            ROS_PRINT_INFO("Saved keyframe map to %s", map_path.c_str());
+        else
+            ROS_PRINT_WARN("Failed to save keyframe map to %s", map_path.c_str());
     }
 
     return 0;

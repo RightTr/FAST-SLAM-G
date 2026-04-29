@@ -3,7 +3,7 @@
 
 namespace fs = std::filesystem;
 
-bool create_directory(const std::string& path) {
+inline bool create_directory(const std::string& path) {
     if (fs::exists(path)) {
         return fs::is_directory(path);
     }

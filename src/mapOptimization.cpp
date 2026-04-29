@@ -3,9 +3,13 @@
 #include "utility.h"
 #include "map_optimization.h"
 #include "ros_utils.h"
+#include "common_utils.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
 
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
@@ -21,6 +25,7 @@
 #include <gtsam/nonlinear/ISAM2.h>
 
 #include <pcl/common/transforms.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
@@ -121,6 +126,159 @@ KD_TREE_PUBLIC<PointType>::PointVector initPoses3D;
 map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
 
 void publishGlobalMap();
+void updatePath(const PointTypePose& pose_in);
+pcl::PointCloud<PointType>::Ptr transformPointCloud(
+    pcl::PointCloud<PointType>::Ptr cloudIn,
+    PointTypePose* transformIn);
+pcl::PointCloud<PointType>::Ptr transformPointCloud2D(
+    pcl::PointCloud<PointType>::Ptr cloudIn,
+    PointTypePose* transformIn);
+gtsam::Pose3 pclPointTogtsamPose3(PointTypePose thisPoint);
+
+constexpr const char *kKeyframePosesFile = "pose.pcd";
+constexpr const char *kKeyframeCloudFolder = "cloud";
+
+void rebuildIsamFromLoadedPoses(const std::vector<PointTypePose> &poses)
+{
+    gtSAMgraph.resize(0);
+    initialEstimate.clear();
+
+    // Imported maps need a finite world anchor before live keyframes are appended.
+    noiseModel::Diagonal::shared_ptr priorNoise =
+        noiseModel::Diagonal::Variances(
+            (Vector(6) << 1e-2, 1e-2, 1e-2, 1e-2, 1e-2, 1e-2).finished());
+    noiseModel::Diagonal::shared_ptr odometryNoise =
+        noiseModel::Diagonal::Variances(
+            (Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+
+    gtSAMgraph.add(PriorFactor<Pose3>(0, pclPointTogtsamPose3(poses.front()), priorNoise));
+    initialEstimate.insert(0, pclPointTogtsamPose3(poses.front()));
+
+    for (std::size_t i = 1; i < poses.size(); ++i)
+    {
+        const Pose3 pose_from = pclPointTogtsamPose3(poses[i - 1]);
+        const Pose3 pose_to = pclPointTogtsamPose3(poses[i]);
+        gtSAMgraph.add(BetweenFactor<Pose3>(
+            i - 1,
+            i,
+            pose_from.between(pose_to),
+            odometryNoise));
+        initialEstimate.insert(i, pose_to);
+    }
+
+    isam->update(gtSAMgraph, initialEstimate);
+    isam->update();
+    gtSAMgraph.resize(0);
+    initialEstimate.clear();
+    isamCurrentEstimate = isam->calculateEstimate();
+}
+
+bool exportKeyframeMap2D(
+    const std::string &directory_path)
+{
+    const std::filesystem::path keyframe_dir =
+        std::filesystem::path(directory_path) / "KEYFRAMES_2D";
+    const std::filesystem::path cloud_dir = keyframe_dir / kKeyframeCloudFolder;
+    if (!create_directory(cloud_dir.string()))
+        return false;
+
+    pcl::PointCloud<PointTypePose> pose_cloud;
+    pose_cloud.points = cloudKeyPoses6D->points;
+    pose_cloud.width = pose_cloud.size();
+    pose_cloud.height = 1;
+    pose_cloud.is_dense = false;
+    for (std::size_t i = 0; i < pose_cloud.size(); ++i)
+        pose_cloud.points[i].intensity = static_cast<float>(i);
+
+    if (pcl::io::savePCDFileBinary((keyframe_dir / kKeyframePosesFile).string(), pose_cloud) < 0)
+        return false;
+
+    for (std::size_t i = 0; i < cloudKeyPoses6D->size(); ++i)
+    {
+        std::ostringstream filename_stream;
+        filename_stream << std::setw(6) << std::setfill('0') << i << ".pcd";
+        if (pcl::io::savePCDFileBinary(
+                (cloud_dir / filename_stream.str()).string(),
+                *denseCloudKeyFrames[i]) < 0)
+            return false;
+    }
+
+    return true;
+}
+
+bool importKeyframeMap2D(const std::string &directory_path)
+{
+    const std::filesystem::path keyframe_dir =
+        std::filesystem::path(directory_path) / "KEYFRAMES_2D";
+    const std::filesystem::path pose_path = keyframe_dir / kKeyframePosesFile;
+    const std::filesystem::path cloud_dir = keyframe_dir / kKeyframeCloudFolder;
+
+    pcl::PointCloud<PointTypePose>::Ptr pose_cloud(new pcl::PointCloud<PointTypePose>());
+    if (pcl::io::loadPCDFile<PointTypePose>(pose_path.string(), *pose_cloud) < 0 ||
+        pose_cloud->empty())
+        return false;
+
+    std::vector<PointTypePose> loaded_poses;
+    std::vector<pcl::PointCloud<PointType>::Ptr> loaded_dense_clouds;
+    std::vector<pcl::PointCloud<PointType>::Ptr> loaded_feat_clouds;
+    KD_TREE_PUBLIC<PointType>::PointVector loaded_pose_points;
+    loaded_poses.reserve(pose_cloud->size());
+    loaded_dense_clouds.reserve(pose_cloud->size());
+    loaded_feat_clouds.reserve(pose_cloud->size());
+    loaded_pose_points.reserve(pose_cloud->size());
+
+    for (std::size_t i = 0; i < pose_cloud->size(); ++i)
+    {
+        PointTypePose pose = pose_cloud->points[i];
+        pose.intensity = static_cast<float>(i);
+        loaded_poses.push_back(pose);
+
+        PointType pose3d;
+        pose3d.x = pose.x;
+        pose3d.y = pose.y;
+        pose3d.z = pose.z;
+        pose3d.intensity = static_cast<float>(i);
+        loaded_pose_points.push_back(pose3d);
+
+        pcl::PointCloud<PointType>::Ptr loaded_cloud(new pcl::PointCloud<PointType>());
+        std::ostringstream filename_stream;
+        filename_stream << std::setw(6) << std::setfill('0') << i << ".pcd";
+        const std::filesystem::path cloud_path = cloud_dir / filename_stream.str();
+        if (std::filesystem::exists(cloud_path))
+        {
+            if (pcl::io::loadPCDFile<PointType>(cloud_path.string(), *loaded_cloud) < 0)
+                return false;
+        }
+        loaded_dense_clouds.push_back(loaded_cloud);
+        loaded_feat_clouds.push_back(pcl::PointCloud<PointType>::Ptr(new pcl::PointCloud<PointType>()));
+    }
+
+    rebuildIsamFromLoadedPoses(loaded_poses);
+
+    for (std::size_t i = 0; i < loaded_poses.size(); ++i)
+    {
+        PointType pose3d;
+        pose3d.x = loaded_poses[i].x;
+        pose3d.y = loaded_poses[i].y;
+        pose3d.z = loaded_poses[i].z;
+        pose3d.intensity = static_cast<float>(i);
+
+        cloudKeyPoses3D->push_back(pose3d);
+        cloudKeyPoses6D->push_back(loaded_poses[i]);
+        copy_cloudKeyPoses3D->push_back(pose3d);
+        copy_cloudKeyPoses6D->push_back(loaded_poses[i]);
+        featCloudKeyFrames.push_back(loaded_feat_clouds[i]);
+        denseCloudKeyFrames.push_back(loaded_dense_clouds[i]);
+        initPoses3D.push_back(pose3d);
+    }
+
+    ikdtreeHistoryKeyPoses->Build(initPoses3D);
+
+    for (const auto &pose : loaded_poses)
+        updatePath(pose);
+
+    return true;
+}
 
 Eigen::Affine3f pclPointToAffine3f(PointTypePose thisPoint)
 { 
@@ -829,7 +987,7 @@ void publishGlobalMap() {
     if (!need_sparse_global && !need_dense_global)
         return;
 
-    if (cloudKeyPoses3D->points.empty())
+    if (cloudKeyPoses3D->points.empty() || ikdtreeHistoryKeyPoses->Root_Node == nullptr)
         return;
 
     pcl::PointCloud<PointType>::Ptr globalMapKeyPoses(new pcl::PointCloud<PointType>());
@@ -838,7 +996,6 @@ void publishGlobalMap() {
     pcl::PointCloud<PointType>::Ptr globalMapKeyFramesDS(new pcl::PointCloud<PointType>());
     pcl::PointCloud<PointType>::Ptr globalMapDenseKeyFrames(new pcl::PointCloud<PointType>());
 
-    // ikd-tree to find near key frames to visualize
     KD_TREE_PUBLIC<PointType>::PointVector globalMapSearchPoses3D;
     std::vector<float> pointSearchSqDisGlobalMap;
     // search near key frames to visualize
@@ -856,12 +1013,14 @@ void publishGlobalMap() {
     for(auto& pt : globalMapKeyPosesDS->points)
     {
         ikdtreeHistoryKeyPoses->Nearest_Search(pt, 1, globalMapSearchPoses3D, pointSearchSqDisGlobalMap);
+        if (globalMapSearchPoses3D.empty())
+            continue;
         pt.intensity = cloudKeyPoses3D->points[globalMapSearchPoses3D[0].intensity].intensity;
     }
 
     // extract visualized and downsampled key frames
     for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i){
-        if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius)
+        if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->points.back()) > globalMapVisualizationSearchRadius)
             continue;
         int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
         if (need_sparse_global) {

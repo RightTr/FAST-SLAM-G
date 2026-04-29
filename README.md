@@ -138,6 +138,10 @@ The current design assumes:
 
 * the 2D navigation map should stay consistent with the 3D map
 
+### Export / Import 2D Keyframe Map
+
+Set `gridmap/map_path` to a directory path. When LIO-SAM backend is enabled, set `gridmap/map_save` to `true` to save the keyframe map during shutdown. Set `gridmap/map_load` to `true` to load the saved keyframe map during startup.
+
 ### Extended LiDAR support
 
 Now, FAST-LIO supports tracking and mapping using the RoboSense LiDARs (e.g., RoboSense Airy) and Unilidar LiDARs (e.g., Unilidar L2). Check the related files in ./config and ./launch folder.
@@ -149,8 +153,6 @@ roslaunch fast_slam_g mapping_airy.launch
 
 ## 📝 TODO List
 
-* [x] Full ROS2 adaptation
-* [x] ROS2 adaptation Test
 * [x] GridMap projection pipeline
 * [ ] Incremental GridMap update optimization
 
