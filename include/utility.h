@@ -43,8 +43,8 @@ extern float mappingICPSize;
 
 extern float scanSliceMinZ;
 extern float scanSliceMaxZ;
-inline constexpr float scanAngleMin = -3.14159f;
-inline constexpr float scanAngleMax = 3.14159f;
+extern float scanAngleMin;
+extern float scanAngleMax;
 inline constexpr float scanAngleIncrement = 0.00436f;
 inline constexpr float scanTime = 0.1f;
 inline constexpr float scanRangeMin = 0.1f;

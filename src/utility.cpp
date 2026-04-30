@@ -1,5 +1,6 @@
 #include "utility.h"
 #include "ros_utils.h"
+#include "common_lib.h"
 
 using namespace std;
 
@@ -45,6 +46,10 @@ float mappingICPSize;
 
 float scanSliceMinZ = -1.5f;
 float scanSliceMaxZ = 0.8f;
+float scan_angle_min_deg = -180.0f;
+float scan_angle_max_deg = 180.0f;
+float scanAngleMin = -3.14159f;
+float scanAngleMax = 3.14159f;
 
 int ikdtreeSearchNeighborNum;
 bool occupancyMapEnabled = true;
@@ -90,6 +95,10 @@ void read_frame_params() {
 void read_pcl2scan_params() {
     rosparam_get("pointcloud_to_laserscan/min_height", scanSliceMinZ, scanSliceMinZ);
     rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, scanSliceMaxZ);
+    rosparam_get("pointcloud_to_laserscan/angle_min_deg", scan_angle_min_deg, scan_angle_min_deg);
+    rosparam_get("pointcloud_to_laserscan/angle_max_deg", scan_angle_max_deg, scan_angle_max_deg);
+    scanAngleMin = deg2rad(scan_angle_min_deg);
+    scanAngleMax = deg2rad(scan_angle_max_deg);
 }
 
 void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,

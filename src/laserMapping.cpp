@@ -1296,12 +1296,12 @@ int main(int argc, char** argv)
     #ifdef USE_ROS1
     auto pubFrontendScan = create_publisher<LaserScanMsg>(frontend_scan_topic, 50);
     #elif defined(USE_ROS2)
-    auto pubFrontendScan = create_publisher_qos<LaserScanMsg>(frontend_scan_topic, rclcpp::SensorDataQoS());
+    auto pubFrontendScan = create_publisher_qos<LaserScanMsg>(frontend_scan_topic, rclcpp::QoS(rclcpp::KeepLast(50)).reliable());
     #endif
     #ifdef USE_ROS1
     int odom_qos = 0;  // ROS1 ignores this parameter
     #elif defined(USE_ROS2)
-    auto odom_qos = rclcpp::QoS(10).best_effort(); // avoid latency caused by QoS reliability in ROS2
+    auto odom_qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable();
     #endif
     auto pubOdomAftMapped = create_publisher_qos<OdometryMsg>("/Odometry", odom_qos);
     auto pubGlobalOdom = create_publisher_qos<OdometryMsg>("/OdometryGlobal", odom_qos);
