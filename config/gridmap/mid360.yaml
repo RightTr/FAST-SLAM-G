@@ -11,7 +11,7 @@ common:
                                 # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 keyframe_map:
-    map_load: true
+    map_load: false
     map_save: false
     map_path: ""
 
@@ -61,7 +61,8 @@ lio_sam:
 
 publish:
     path_en:  false
-    use_lidar_frame: true      # false: publish IMU/base_link pose; true: publish LiDAR pose. TF chain stays unchanged.
+    use_lidar_frame: true        # false: publish IMU/base_link pose; true: publish LiDAR pose. TF chain stays unchanged.
+    use_current_time: true       # false: publish all msg with current time
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
@@ -98,6 +99,7 @@ zupt:
     cov_inflate_rot:   1.0e-8         # per-step rotation covariance inflation
 
 occupancy_map:
+    gridmap_enabled: true
     resolution: 0.05
 
 pointcloud_to_laserscan:

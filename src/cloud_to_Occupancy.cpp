@@ -13,7 +13,7 @@
 
 using PointType = pcl::PointXYZI;
 
-bool enabled = true;
+bool gridmap_enabled = true;
 bool fill_free_space = true;
 int min_points_per_cell = 1;
 double resolution = 0.1;
@@ -21,19 +21,29 @@ double padding = 5.0;
 std::string input_topic = "lio_sam/mapping/cloud_global_2d";
 std::string output_topic = "/map";
 std::string map_frame = "map";
+bool use_current_time = true;
 
 OccupancyGridPublisher pubOccupancyGrid;
 
-template<typename StampT>
-void publishOccupancyFromHits(
-    const StampT &stamp,
-    const std::vector<std::pair<double, double>> &hits)
+inline TimeType get_publish_stamp(const Pcl2MsgConstPtr& msg)
 {
-    if (hits.empty()) {
-        ROS_PRINT_WARN("cloud_to_occupancy: no valid hits remain after filtering");
-        return;
+    if (!use_current_time) {
+#ifdef USE_ROS1
+        return msg->header.stamp;
+#elif defined(USE_ROS2)
+        return TimeType(msg->header.stamp);
+#endif
     }
 
+#ifdef USE_ROS1
+    return get_ros_now();
+#elif defined(USE_ROS2)
+    return get_ros_now(get_ros_node());
+#endif
+}
+
+void publishOccupancyFromHits(const TimeType &stamp, const std::vector<std::pair<double, double>> &hits)
+{
     double min_x = std::numeric_limits<double>::max();
     double min_y = std::numeric_limits<double>::max();
     double max_x = std::numeric_limits<double>::lowest();
@@ -106,12 +116,14 @@ void cloudCallback(const Pcl2MsgConstPtr& msg)
         hits.emplace_back(static_cast<double>(point.x), static_cast<double>(point.y));
     }
 
-    publishOccupancyFromHits(msg->header.stamp, hits);
+    publishOccupancyFromHits(get_publish_stamp(msg), hits);
 }
 
 void readParams()
 {
+    rosparam_get("occupancy_map/gridmap_enabled", gridmap_enabled, true);
     rosparam_get("occupancy_map/resolution", resolution, resolution);
+    rosparam_get("publish/use_current_time", use_current_time, true);
 }
 
 int main(int argc, char** argv)
@@ -133,7 +145,7 @@ int main(int argc, char** argv)
     pubOccupancyGrid = create_publisher_qos<OccupancyGridMsg>(output_topic, map_qos);
 #endif
 
-    if (!enabled) {
+    if (!gridmap_enabled) {
         ROS_PRINT_INFO("cloud_to_occupancy disabled");
     } else {
         auto subCloud = create_subscriber<PointCloud2Msg>(input_topic, 1, cloudCallback);

@@ -68,6 +68,8 @@ std::atomic<bool> flg_exit(false);
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool   frontend_scan_pub_en = true;
 bool   publish_use_lidar_frame = false;
+bool   publish_use_current_time = true;
+TimeType publish_stamp;
 bool reloc_en = false;
 bool sam_enable = false;
 bool map_load = false;
@@ -568,6 +570,21 @@ inline const std::string& published_pose_frame_id()
     return publish_use_lidar_frame ? lidarFrame : baselinkFrame;
 }
 
+inline void update_publish_stamp()
+{
+    if (!publish_use_current_time)
+    {
+        publish_stamp = get_ros_time(lidar_end_time);
+        return;
+    }
+
+#ifdef USE_ROS1
+    publish_stamp = get_ros_now();
+#elif defined(USE_ROS2)
+    publish_stamp = get_ros_now(get_ros_node());
+#endif
+}
+
 PoseEstimate poseEstimatePublishedInWorld(const PoseEstimate& baselink_pose, const state_ikfom& state)
 {
     if (!publish_use_lidar_frame)
@@ -613,10 +630,7 @@ void set_geometry_pose(T & out, const PoseEstimate& pose)
     out.orientation.w = pose.orientation.w();
 }
 
-void publish_map_to_odom_tf(
-    const TimeType& stamp,
-    const PoseEstimate& map_pose,
-    const PoseEstimate& odom_pose)
+void publish_map_to_odom_tf(const PoseEstimate& map_pose, const PoseEstimate& odom_pose)
 {
     Eigen::Isometry3d map_to_base = Eigen::Isometry3d::Identity();
     map_to_base.linear() = map_pose.orientation.toRotationMatrix();
@@ -633,7 +647,7 @@ void publish_map_to_odom_tf(
     map_to_odom_pose.orientation = Eigen::Quaterniond(map_to_odom.linear()).normalized();
 
     TransformStampedMsg tf_msg;
-    tf_msg.header.stamp = stamp;
+    tf_msg.header.stamp = publish_stamp;
     tf_msg.header.frame_id = mapFrame;
     tf_msg.child_frame_id = odometryFrame;
     tf_msg.transform.translation.x = map_to_odom_pose.position.x();
@@ -671,7 +685,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
         }
         Pcl2Msg laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
+        laserCloudmsg.header.stamp = publish_stamp;
         laserCloudmsg.header.frame_id = global_frame_id();
         ros_publish(pubLaserCloudFull, laserCloudmsg);
         publish_count -= PUBFRAME_PERIOD;
@@ -734,7 +748,7 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
     if (publish_use_lidar_frame)
     {
         pcl::toROSMsg(*feats_undistort, laserCloudmsg);
-        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
+        laserCloudmsg.header.stamp = publish_stamp;
         laserCloudmsg.header.frame_id = lidarFrame;
     }
     else
@@ -749,7 +763,7 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
         }
 
         pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
-        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
+        laserCloudmsg.header.stamp = publish_stamp;
         laserCloudmsg.header.frame_id = baselinkFrame;
     }
     ros_publish(pubLaserCloudFull_body, laserCloudmsg);
@@ -759,8 +773,7 @@ void publish_frame_body(const Pcl2Publisher & pubLaserCloudFull_body)
 template<typename ScanPublisherT>
 void publish_frontend_scan(
     const ScanPublisherT &pubFrontendScan,
-    const PointCloudXYZI &cloud,
-    const double scan_stamp)
+    const PointCloudXYZI &cloud)
 {
     if (!frontend_scan_pub_en || cloud.empty())
         return;
@@ -768,7 +781,7 @@ void publish_frontend_scan(
         return;
 
     LaserScanMsg scan_msg;
-    scan_msg.header.stamp = get_ros_time(scan_stamp);
+    scan_msg.header.stamp = publish_stamp;
     scan_msg.header.frame_id = published_pose_frame_id();
     scan_msg.angle_min = scanAngleMin;
     scan_msg.angle_max = scanAngleMax;
@@ -828,7 +841,7 @@ void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
     }
     Pcl2Msg laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
-    laserCloudFullRes3.header.stamp = get_ros_time(lidar_end_time);
+    laserCloudFullRes3.header.stamp = publish_stamp;
     laserCloudFullRes3.header.frame_id = global_frame_id();
     ros_publish(pubLaserCloudEffect, laserCloudFullRes3);
 }
@@ -847,7 +860,7 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
 
     Pcl2Msg laserCloudMap;
     pcl::toROSMsg(*mapCloud, laserCloudMap);
-    laserCloudMap.header.stamp = get_ros_time(lidar_end_time);
+    laserCloudMap.header.stamp = publish_stamp;
     laserCloudMap.header.frame_id = global_frame_id();
     ros_publish(pubLaserCloudMap, laserCloudMap);
 }
@@ -909,7 +922,7 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped, const PoseEstimate
     odomAftMapped.header.frame_id = odometryFrame;
     odomAftMapped.child_frame_id = published_pose_frame_id();
     set_geometry_pose(odomAftMapped.pose.pose, published_pose);
-    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+    odomAftMapped.header.stamp = publish_stamp;
 
     auto P = kf.get_P();
     std::fill(std::begin(odomAftMapped.pose.covariance), std::end(odomAftMapped.pose.covariance), 0.0);
@@ -950,7 +963,7 @@ void publish_global_odometry(const OdomPublisher & pubGlobalOdom, const PoseEsti
 {
     const PoseEstimate published_pose = poseEstimatePublishedInWorld(baselink_map_pose, state_point);
     OdomMsg global_odom;
-    global_odom.header.stamp = get_ros_time(lidar_end_time);
+    global_odom.header.stamp = publish_stamp;
     global_odom.header.frame_id = mapFrame;
     global_odom.child_frame_id = published_pose_frame_id();
     set_geometry_pose(global_odom.pose.pose, published_pose);
@@ -969,7 +982,7 @@ void publish_path(const PathPublisher pubPath)
     }
     pose = poseEstimatePublishedInWorld(pose, state_point);
     set_geometry_pose(msg_body_pose.pose, pose);
-    msg_body_pose.header.stamp = get_ros_time(lidar_end_time);
+    msg_body_pose.header.stamp = publish_stamp;
 
     msg_body_pose.header.frame_id = global_frame_id();
 
@@ -1121,6 +1134,7 @@ int main(int argc, char** argv)
     rosparam_get("publish/dense_publish_en", dense_pub_en, true);
     rosparam_get("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
     rosparam_get("publish/use_lidar_frame", publish_use_lidar_frame, false);
+    rosparam_get("publish/use_current_time", publish_use_current_time, true);
     rosparam_get("publish/frontend_scan_pub_en", frontend_scan_pub_en, true);
     rosparam_get("publish/feature_pub_en", feature_pub_en, false);
     rosparam_get("publish/effect_pub_en", effect_pub_en, false);
@@ -1361,7 +1375,8 @@ int main(int argc, char** argv)
                 first_lidar_time = Measures.lidar_beg_time;
                 p_imu->first_lidar_time = first_lidar_time;
                 flg_first_scan = false;
-                publish_frontend_scan(pubFrontendScan, *Measures.lidar, Measures.lidar_end_time);
+                update_publish_stamp();
+                publish_frontend_scan(pubFrontendScan, *Measures.lidar);
                 continue;
             }
 
@@ -1479,10 +1494,10 @@ int main(int argc, char** argv)
             PoseEstimate map_pose = odom_pose;
             map_pose.position = transformPositionOdomToMap(map_pose.position);
             map_pose.orientation = transformOrientationOdomToMap(map_pose.orientation);
-            const TimeType odom_stamp = get_ros_time(lidar_end_time);
-            publish_map_to_odom_tf(odom_stamp, map_pose, odom_pose);
+            update_publish_stamp();
+            publish_map_to_odom_tf(map_pose, odom_pose);
             TransformStampedMsg tf_msg;
-            tf_msg.header.stamp = odom_stamp;
+            tf_msg.header.stamp = publish_stamp;
             tf_msg.header.frame_id = baselinkFrame;
             tf_msg.child_frame_id = lidarFrame;
             tf_msg.transform.translation.x = state_point.offset_T_L_I.x();
@@ -1512,7 +1527,7 @@ int main(int argc, char** argv)
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
-            publish_frontend_scan(pubFrontendScan, *feats_undistort, lidar_end_time);
+            publish_frontend_scan(pubFrontendScan, *feats_undistort);
             if (scan_pub_en || res_save_en)      publish_frame_world(pubLaserCloudFull);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             if (effect_pub_en) publish_effect_world(pubLaserCloudEffect);
