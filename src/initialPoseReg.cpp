@@ -29,28 +29,25 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(
 
 namespace
 {
-constexpr double kInitRegCoarseMaxCorr = 2.0;
-constexpr double kInitRegFineMaxCorr = 0.2;
-constexpr double kInitRegLeafSize = 0.05;
-constexpr double kInitRegMaxTranslationCorrection = 0.8;
-constexpr double kInitRegMaxYawCorrection = 0.35;
-constexpr double kInitRegMinInlierRatio = 0.6;
-constexpr int kInitRegMaxKeyframes = 5;
-constexpr int kInitRegMinSourcePoints = 50;
-constexpr int kInitRegMinTargetPoints = 200;
+constexpr double kCoarseMaxCorr = 2.0;
+constexpr double kFineMaxCorr = 0.2;
+constexpr int kIcpIterations = 100;
+constexpr float kLeafSize = 0.05f;
+constexpr double kMaxDeltaXY = 0.8;
+constexpr double kMaxDeltaYaw = 0.35;
+constexpr double kMinInlierRatio = 0.6;
+constexpr int kMaxKeyframes = 5;
 
 bool run_icp(
     const pcl::PointCloud<PointType>::ConstPtr &source_ds,
     const pcl::PointCloud<PointType>::ConstPtr &target_ds,
-    const double max_correspondence_distance,
-    const int max_iterations,
+    const double max_corr,
     const Eigen::Matrix4f &guess,
-    Eigen::Matrix4f &final_transform,
-    double &fitness_score)
+    Eigen::Matrix4f &final_transform)
 {
     pcl::IterativeClosestPoint<PointType, PointType> icp;
-    icp.setMaxCorrespondenceDistance(max_correspondence_distance);
-    icp.setMaximumIterations(max_iterations);
+    icp.setMaxCorrespondenceDistance(max_corr);
+    icp.setMaximumIterations(kIcpIterations);
     icp.setTransformationEpsilon(1e-8);
     icp.setEuclideanFitnessEpsilon(1e-8);
     icp.setRANSACIterations(0);
@@ -60,7 +57,6 @@ bool run_icp(
     pcl::PointCloud<PointType> aligned;
     icp.align(aligned, guess);
 
-    fitness_score = icp.getFitnessScore();
     final_transform = icp.getFinalTransformation();
     return icp.hasConverged();
 }
@@ -72,14 +68,8 @@ bool registerInitialPoseToKeyframes3D(
     const Eigen::Quaterniond &initial_orientation_map,
     Eigen::Vector3d &registered_position_map,
     Eigen::Quaterniond &registered_orientation_map,
-    std::string *failure_reason)
+    std::string *)
 {
-    if (failure_reason)
-        failure_reason->clear();
-
-    if (!scan_base_3d)
-        return false;
-
     pcl::PointCloud<PointType>::Ptr source(new pcl::PointCloud<PointType>());
     source->reserve(scan_base_3d->size());
     for (const auto &point : scan_base_3d->points)
@@ -96,10 +86,6 @@ bool registerInitialPoseToKeyframes3D(
         source_point.intensity = point.intensity;
         source->push_back(source_point);
     }
-
-    int source_points = static_cast<int>(source->size());
-    if (source_points < kInitRegMinSourcePoints)
-        return false;
 
     pcl::PointCloud<PointType>::Ptr target(new pcl::PointCloud<PointType>());
     {
@@ -120,10 +106,8 @@ bool registerInitialPoseToKeyframes3D(
             query,
             static_cast<float>(init_reg_search_radius),
             near_keyposes);
-        if (near_keyposes.empty())
-            return false;
 
-        if (static_cast<int>(near_keyposes.size()) > kInitRegMaxKeyframes)
+        if (static_cast<int>(near_keyposes.size()) > kMaxKeyframes)
         {
             std::sort(
                 near_keyposes.begin(),
@@ -138,7 +122,7 @@ bool registerInitialPoseToKeyframes3D(
                     return ldx * ldx + ldy * ldy + ldz * ldz <
                            rdx * rdx + rdy * rdy + rdz * rdz;
                 });
-            near_keyposes.resize(kInitRegMaxKeyframes);
+            near_keyposes.resize(kMaxKeyframes);
         }
 
         for (const auto &near_pose : near_keyposes)
@@ -157,13 +141,8 @@ bool registerInitialPoseToKeyframes3D(
         }
     }
 
-    int target_points = static_cast<int>(target->size());
-    if (target_points < kInitRegMinTargetPoints)
-        return false;
-
-    const float leaf_size = static_cast<float>(kInitRegLeafSize);
     pcl::VoxelGrid<PointType> downsample_filter;
-    downsample_filter.setLeafSize(leaf_size, leaf_size, leaf_size);
+    downsample_filter.setLeafSize(kLeafSize, kLeafSize, kLeafSize);
 
     pcl::PointCloud<PointType>::Ptr source_ds(new pcl::PointCloud<PointType>());
     downsample_filter.setInputCloud(source);
@@ -172,12 +151,6 @@ bool registerInitialPoseToKeyframes3D(
     pcl::PointCloud<PointType>::Ptr target_ds(new pcl::PointCloud<PointType>());
     downsample_filter.setInputCloud(target);
     downsample_filter.filter(*target_ds);
-
-    source_points = static_cast<int>(source_ds->size());
-    target_points = static_cast<int>(target_ds->size());
-    if (source_points < kInitRegMinSourcePoints ||
-        target_points < kInitRegMinTargetPoints)
-        return false;
 
     const Eigen::Vector3d euler =
         initial_orientation_map.normalized().toRotationMatrix().eulerAngles(2, 1, 0);
@@ -191,42 +164,19 @@ bool registerInitialPoseToKeyframes3D(
             0.0f,
             initial_yaw).matrix();
 
-    const double fine_max_corr = kInitRegFineMaxCorr;
-    const double coarse_max_corr = kInitRegCoarseMaxCorr;
     Eigen::Matrix4f icp_guess = initial_guess;
-    bool coarse_converged = true;
-    double coarse_fitness_score = 0.0;
-    if (coarse_max_corr > fine_max_corr + 1e-6)
-    {
-        coarse_converged = run_icp(
-            source_ds,
-            target_ds,
-            coarse_max_corr,
-            80,
-            initial_guess,
-            icp_guess,
-            coarse_fitness_score);
-        if (!coarse_converged)
-            return false;
-    }
+    if (!run_icp(source_ds, target_ds, kCoarseMaxCorr, initial_guess, icp_guess))
+        return false;
 
     Eigen::Matrix4f final_icp_transform = icp_guess;
-    bool converged = false;
-    double fitness_score = 0.0;
-    converged = run_icp(
-        source_ds,
-        target_ds,
-        fine_max_corr,
-        100,
-        icp_guess,
-        final_icp_transform,
-        fitness_score);
+    if (!run_icp(source_ds, target_ds, kFineMaxCorr, icp_guess, final_icp_transform))
+        return false;
 
     pcl::PointCloud<PointType> source_aligned;
     pcl::transformPointCloud(*source_ds, source_aligned, final_icp_transform);
     pcl::KdTreeFLANN<PointType> target_tree;
     target_tree.setInputCloud(target_ds);
-    const double fine_max_corr_sq = fine_max_corr * fine_max_corr;
+    const double fine_max_corr_sq = kFineMaxCorr * kFineMaxCorr;
     double inlier_fitness_score = std::numeric_limits<double>::max();
     double inlier_ratio = 0.0;
     int inlier_count = 0;
@@ -249,9 +199,7 @@ bool registerInitialPoseToKeyframes3D(
     if (inlier_count > 0)
         inlier_fitness_score = inlier_sq_dist_sum / static_cast<double>(inlier_count);
 
-    if (!converged ||
-        inlier_count == 0 ||
-        inlier_ratio < kInitRegMinInlierRatio ||
+    if (inlier_ratio < kMinInlierRatio ||
         (init_reg_fitness_score > 0.0 &&
          inlier_fitness_score > init_reg_fitness_score))
         return false;
@@ -266,8 +214,8 @@ bool registerInitialPoseToKeyframes3D(
     const double yaw_correction = std::atan2(
         std::sin(static_cast<double>(yaw) - static_cast<double>(initial_yaw)),
         std::cos(static_cast<double>(yaw) - static_cast<double>(initial_yaw)));
-    if (translation_correction > kInitRegMaxTranslationCorrection ||
-        std::abs(yaw_correction) > kInitRegMaxYawCorrection)
+    if (translation_correction > kMaxDeltaXY ||
+        std::abs(yaw_correction) > kMaxDeltaYaw)
         return false;
 
     registered_position_map = Eigen::Vector3d(x, y, z);
