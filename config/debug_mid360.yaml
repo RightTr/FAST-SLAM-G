@@ -28,8 +28,8 @@ mapping:
     det_range:     100.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
     # LiDAR -> IMU extrinsic: p_imu = R * p_lidar + T
-    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
-    extrinsic_R: [ 1, 0, 0,
+    lidar_to_imu_T: [ -0.011, -0.02329, 0.04412 ]
+    lidar_to_imu_R: [ 1, 0, 0,
                    0, 1, 0,
                    0, 0, 1]
     # base_link -> lidar TF: p_base = R * p_lidar + T

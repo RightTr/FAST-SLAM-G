@@ -104,8 +104,8 @@ const M3D IMU_FLIP_R = (M3D() <<
 vector<vector<int>>  pointSearchInd_surf; 
 vector<BoxPointType> cub_needrm;
 vector<PointVector>  Nearest_Points; 
-vector<double>       extrinT(3, 0.0);
-vector<double>       extrinR(9, 0.0);
+vector<double>       lidarToImuT(3, 0.0);
+vector<double>       lidarToImuR(9, 0.0);
 deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<ImuMsgConstPtr> imu_buffer;
@@ -1302,8 +1302,8 @@ int main(int argc, char** argv)
     rosparam_get("mapping/extrinsic_est_en", extrinsic_est_en, true);
     rosparam_get("res_save/res_save_en", res_save_en, false);
     rosparam_get("res_save/interval", res_save_interval, -1);
-    rosparam_get("mapping/extrinsic_T", extrinT, std::vector<double>());
-    rosparam_get("mapping/extrinsic_R", extrinR, std::vector<double>());
+    rosparam_get("mapping/lidar_to_imu_T", lidarToImuT, std::vector<double>());
+    rosparam_get("mapping/lidar_to_imu_R", lidarToImuR, std::vector<double>());
     // mapping/base_link_to_lidar_* is base_link -> lidar TF: p_base = R * p_lidar + T.
     std::vector<double> base_to_lidar_T{0.0, 0.0, 0.0};
     std::vector<double> base_to_lidar_R{
@@ -1369,9 +1369,9 @@ int main(int argc, char** argv)
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));
 
-    // mapping/extrinsic_* is LiDAR -> IMU: p_imu = R * p_lidar + T.
-    Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
-    Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
+    // mapping/lidar_to_imu_* is LiDAR -> IMU: p_imu = R * p_lidar + T.
+    Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(lidarToImuT);
+    Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(lidarToImuR);
     if (imu_flip)
     {
         // Apply the same proper IMU frame rotation to both measurements and extrinsics.
