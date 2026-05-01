@@ -433,15 +433,6 @@ PointType transformFrontendPointToImu(const pcl::PointXYZINormal &pt)
     return point;
 }
 
-bool keepDenseKeyframePoint(const PointType &point)
-{
-    return std::isfinite(point.x) &&
-           std::isfinite(point.y) &&
-           std::isfinite(point.z) &&
-           point.z >= scanSliceMinZ &&
-           point.z <= scanSliceMaxZ;
-}
-
 void MapOptimizationInit()
 {
     ISAM2Params parameters;
@@ -769,7 +760,11 @@ void saveKeyFramesAndFactor(
 
     for (const auto &pt : feats_undistort->points) {
         PointType point = transformFrontendPointToImu(pt);
-        if (keepDenseKeyframePoint(point) &&
+        if (std::isfinite(point.x) &&
+            std::isfinite(point.y) &&
+            std::isfinite(point.z) &&
+            point.z >= scanSliceMinZ &&
+            point.z <= scanSliceMaxZ &&
             dynamic_cells.find(denseCellKey(point)) == dynamic_cells.end()) {
             point.z = 0.0f;
             denseCloudKeyFrame->push_back(point);
