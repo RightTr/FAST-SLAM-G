@@ -51,6 +51,18 @@ float scan_angle_max_deg = 180.0f;
 float scanAngleMin = -3.14159f;
 float scanAngleMax = 3.14159f;
 
+double init_reg_search_radius = 8.0;
+double init_reg_coarse_max_correspondence_distance = 2.0;
+double init_reg_max_correspondence_distance = 0.2;
+double init_reg_fitness_score = 0.01;
+double init_reg_leaf_size = 0.05;
+double init_reg_max_translation_correction = 0.8;
+double init_reg_max_yaw_correction = 0.35;
+double init_reg_min_inlier_ratio = 0.6;
+int init_reg_max_keyframes = 20;
+int init_reg_min_source_points = 50;
+int init_reg_min_target_points = 200;
+
 int ikdtreeSearchNeighborNum;
 bool occupancyMapEnabled = true;
 bool mapFrameOriginInitialized = false;
@@ -99,6 +111,20 @@ void read_pcl2scan_params() {
     rosparam_get("pointcloud_to_laserscan/angle_max_deg", scan_angle_max_deg, scan_angle_max_deg);
     scanAngleMin = deg2rad(scan_angle_min_deg);
     scanAngleMax = deg2rad(scan_angle_max_deg);
+}
+
+void read_reloc_params() {
+    rosparam_get("reloc/init_reg_search_radius", init_reg_search_radius, 8.0);
+    rosparam_get("reloc/init_reg_coarse_max_correspondence_distance", init_reg_coarse_max_correspondence_distance, 2.0);
+    rosparam_get("reloc/init_reg_max_correspondence_distance", init_reg_max_correspondence_distance, 0.2);
+    rosparam_get("reloc/init_reg_fitness_score", init_reg_fitness_score, 0.01);
+    rosparam_get("reloc/init_reg_leaf_size", init_reg_leaf_size, 0.05);
+    rosparam_get("reloc/init_reg_max_translation_correction", init_reg_max_translation_correction, 0.8);
+    rosparam_get("reloc/init_reg_max_yaw_correction", init_reg_max_yaw_correction, 0.35);
+    rosparam_get("reloc/init_reg_min_inlier_ratio", init_reg_min_inlier_ratio, 0.6);
+    rosparam_get("reloc/init_reg_max_keyframes", init_reg_max_keyframes, 20);
+    rosparam_get("reloc/init_reg_min_source_points", init_reg_min_source_points, 50);
+    rosparam_get("reloc/init_reg_min_target_points", init_reg_min_target_points, 200);
 }
 
 void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,

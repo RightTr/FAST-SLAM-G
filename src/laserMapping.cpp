@@ -53,7 +53,6 @@ condition_variable sig_buffer;
 
 string root_dir = ROOT_DIR;
 string map_path, lid_topic, imu_topic;
-string reloc_topic;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -105,10 +104,10 @@ deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<ImuMsgConstPtr> imu_buffer;
 
-mutex mtx_reloc;
-condition_variable sig_reloc;
-Pose reloc_state;
-std::atomic<bool> relocalize_flag(false);
+mutex mtx_initialpose;
+Pose initialpose_state;
+std::atomic<bool> init_reg_flag(false);
+std::atomic<bool> init_reg_done(false);
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -396,25 +395,29 @@ void imu_cbk(const ImuMsgConstPtr &msg_in)
     sig_buffer.notify_all();
 }
 
-/*** relocation callback ***/
-void reloc_cbk(const PoseStampedMsgConstPtr &msg_in) 
+void initialpose_cbk(const PoseWithCovarianceStampedMsgConstPtr &msg_in)
 {
-    double timestamp = get_ros_time_sec(msg_in->header.stamp);
-    double x = msg_in->pose.position.x;
-    double y = msg_in->pose.position.y;
-    double z = msg_in->pose.position.z;
+    if (msg_in->header.frame_id != mapFrame)
+    {
+        ROS_PRINT_WARN("Ignore initialpose in frame '%s'; expected '%s'",
+            msg_in->header.frame_id.c_str(), mapFrame.c_str());
+        return;
+    }
 
-    double qx = msg_in->pose.orientation.x;
-    double qy = msg_in->pose.orientation.y;
-    double qz = msg_in->pose.orientation.z;
-    double qw = msg_in->pose.orientation.w;
-    
-    std::lock_guard<std::mutex> lock(mtx_reloc);
-    reloc_state = Pose(x, y, z,
-                    qx, qy, qz, qw, timestamp);
-    relocalize_flag.store(true); 
-    ROS_PRINT_INFO("Reloc received: (%.3f, %.3f, %.3f), quat=(%.3f, %.3f, %.3f, %.3f)",
-        x, y, z, qx, qy, qz, qw);
+    const auto &pose = msg_in->pose.pose;
+    const double timestamp = get_ros_time_sec(msg_in->header.stamp);
+    std::lock_guard<std::mutex> lock(mtx_initialpose);
+    initialpose_state = Pose(
+        pose.position.x,
+        pose.position.y,
+        pose.position.z,
+        pose.orientation.x,
+        pose.orientation.y,
+        pose.orientation.z,
+        pose.orientation.w,
+        timestamp);
+    init_reg_done.store(false);
+    init_reg_flag.store(true);
 }
 
 double lidar_mean_scantime = 0.0;
@@ -558,6 +561,104 @@ void update_state_ikfom()
     state_point = state_updated;
 
     kf.change_x(state_updated);
+}
+
+bool consumeInitialPoseRegistration()
+{
+    Pose initial_pose;
+    {
+        std::lock_guard<std::mutex> lock(mtx_initialpose);
+        initial_pose = initialpose_state;
+    }
+    init_reg_flag.store(false);
+
+    if (!sam_enable)
+    {
+        ROS_PRINT_WARN("Initialpose registration needs sam_enable=true and a loaded keyframe map");
+        return false;
+    }
+
+    const Eigen::Vector3d initial_position(initial_pose._x, initial_pose._y, initial_pose._z);
+    const Eigen::Quaterniond initial_orientation(initial_pose._qw, initial_pose._qx,
+                                                    initial_pose._qy,initial_pose._qz);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZI>());
+    source_cloud->reserve(feats_down_body->size());
+    for (const auto &point : feats_down_body->points)
+    {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+                continue;
+
+            PointType lidar_point = point;
+            PointType imu_point;
+            RGBpointBodyLidarToIMU(&lidar_point, &imu_point);
+
+            if (!std::isfinite(imu_point.x) ||
+                !std::isfinite(imu_point.y) ||
+                !std::isfinite(imu_point.z))
+                continue;
+
+            pcl::PointXYZI scan_point;
+            scan_point.x = imu_point.x;
+            scan_point.y = imu_point.y;
+            scan_point.z = imu_point.z;
+            scan_point.intensity = imu_point.intensity;
+            source_cloud->push_back(scan_point);
+    }
+
+    Eigen::Vector3d registered_position;
+    Eigen::Quaterniond registered_orientation;
+    std::string failure_reason;
+    const bool success = registerInitialPoseToKeyframes3D(
+        source_cloud,
+        initial_position,
+        initial_orientation,
+        registered_position,
+        registered_orientation,
+        &failure_reason);
+
+    if (!success)
+    {
+        ROS_PRINT_WARN("Initialpose registration failed: %s",
+            failure_reason.empty() ? "unknown reason" : failure_reason.c_str());
+        return false;
+    }
+
+    const double initial_yaw =
+        initial_orientation.normalized().toRotationMatrix().eulerAngles(2, 1, 0)[0];
+    const double registered_yaw =
+        registered_orientation.normalized().toRotationMatrix().eulerAngles(2, 1, 0)[0];
+    ROS_PRINT_INFO(
+        "Initialpose registration accepted: initial=(%.3f, %.3f, yaw=%.3f), registered=(%.3f, %.3f, yaw=%.3f), delta_xy=%.3f, delta_yaw=%.3f",
+        initial_position.x(),
+        initial_position.y(),
+        initial_yaw,
+        registered_position.x(),
+        registered_position.y(),
+        registered_yaw,
+        std::hypot(registered_position.x() - initial_position.x(), registered_position.y() - initial_position.y()),
+        std::atan2(std::sin(registered_yaw - initial_yaw), std::cos(registered_yaw - initial_yaw)));
+
+    state_ikfom state_updated = kf.get_x();
+    state_updated.pos = registered_position;
+    state_updated.rot = registered_orientation.normalized();
+    state_updated.vel = Zero3d;
+    state_point = state_updated;
+
+    p_imu->Reset();
+    kf.change_x(state_updated);
+    feats_down_world->clear();
+    ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
+    mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
+    mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
+    mapFrameOriginInitialized = true;
+    if (sam_enable)
+        updateSamState(state_updated);
+
+    euler_cur = SO3ToEuler(state_point.rot);
+    pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+    flg_first_scan = true;
+    init_reg_done.store(true);
+    return true;
 }
 
 inline const std::string& global_frame_id()
@@ -789,40 +890,27 @@ void publish_frontend_scan(
     scan_msg.scan_time = scanTime;
     scan_msg.range_min = scanRangeMin;
     scan_msg.range_max = scanRangeMax;
+    scan_msg.ranges = projectCloudToScanRanges(
+        cloud,
+        [](const PointType &point, pcl::PointXYZI &scan_point) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+                return false;
 
-    const int beam_count = std::max(1, static_cast<int>(
-        std::ceil((scan_msg.angle_max - scan_msg.angle_min) / scan_msg.angle_increment)));
-    scan_msg.ranges.assign(beam_count, std::numeric_limits<float>::infinity());
+            PointType frame_point = point;
+            PointType imu_point;
+            RGBpointBodyLidarToIMU(&frame_point, &imu_point);
+            if (imu_point.z < scanSliceMinZ || imu_point.z > scanSliceMaxZ)
+                return false;
 
-    for (const auto &point : cloud.points)
-    {
-        PointType frame_point = point;
-        if (!std::isfinite(frame_point.x) || !std::isfinite(frame_point.y) || !std::isfinite(frame_point.z))
-            continue;
+            if (!publish_use_lidar_frame)
+                frame_point = imu_point;
 
-        PointType imu_point;
-        RGBpointBodyLidarToIMU(&frame_point, &imu_point);
-        const PointType &slice_point = imu_point;
-        if (!publish_use_lidar_frame)
-            frame_point = imu_point;
-
-        if (slice_point.z < scanSliceMinZ || slice_point.z > scanSliceMaxZ)
-            continue;
-
-        const float range = std::hypot(frame_point.x, frame_point.y);
-        if (range < scan_msg.range_min || range > scan_msg.range_max)
-            continue;
-
-        const float angle = std::atan2(frame_point.y, frame_point.x);
-        if (angle < scan_msg.angle_min || angle > scan_msg.angle_max)
-            continue;
-
-        const int index = static_cast<int>((angle - scan_msg.angle_min) / scan_msg.angle_increment);
-        if (index < 0 || index >= beam_count)
-            continue;
-
-        scan_msg.ranges[index] = std::min(scan_msg.ranges[index], range);
-    }
+            scan_point.x = frame_point.x;
+            scan_point.y = frame_point.y;
+            scan_point.z = 0.0f;
+            scan_point.intensity = frame_point.intensity;
+            return true;
+        });
 
     ros_publish(pubFrontendScan, scan_msg);
 }
@@ -1146,7 +1234,6 @@ int main(int argc, char** argv)
     rosparam_get("keyframe_map/map_save", map_save, false);
     rosparam_get("common/lid_topic", lid_topic, std::string("/livox/lidar"));
     rosparam_get("common/imu_topic", imu_topic, std::string("/livox/imu"));
-    rosparam_get("reloc/reloc_topic", reloc_topic, std::string("/reloc/manual"));
     rosparam_get("common/time_sync_en", time_sync_en, false);
     rosparam_get("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
     rosparam_get("common/imu_flip", imu_flip, false);
@@ -1187,6 +1274,8 @@ int main(int argc, char** argv)
     rosparam_get("zupt/lidar_residual_ref",      lidar_residual_ref,      0.05);
 
     if (map_path.empty()) map_path = root_dir;
+
+    if (reloc_en) read_reloc_params();
 
     read_frame_params();
     read_pcl2scan_params();
@@ -1287,7 +1376,7 @@ int main(int argc, char** argv)
         static auto sub_pcl = create_subscriber<PointCloud2Msg>(lid_topic, 200000, standard_pcl_cbk);
     }
     
-    auto sub_reloc = create_subscriber<PoseStampedMsg>(reloc_topic, 10, reloc_cbk);
+    auto sub_initialpose = create_subscriber<PoseWithCovarianceStampedMsg>("/initialpose", 10, initialpose_cbk);
     auto sub_imu = create_subscriber<ImuMsg>(imu_topic, 200000, imu_cbk);
     auto pubLaserCloudFull = create_publisher<PointCloud2Msg>("/cloud_registered", 100000);
     auto pubLaserCloudFull_body = create_publisher<PointCloud2Msg>("/cloud_registered_body", 100000);
@@ -1314,7 +1403,7 @@ int main(int argc, char** argv)
         MapOptimizationInit();
         if (map_load)
         {
-            if (importKeyframeMap2D(map_path))
+            if (importKeyframeMap(map_path))
                 ROS_PRINT_INFO("Loaded keyframe map from %s", map_path.c_str());
             else
                 ROS_PRINT_WARN("Failed to load keyframe map from %s", map_path.c_str());
@@ -1340,33 +1429,6 @@ int main(int argc, char** argv)
     while (ros_ok() && !flg_exit)
     {
         spin_once();
-
-        if(reloc_en)
-        {
-            // relocalization trigger
-            if(relocalize_flag.load())
-            {
-                feats_down_world->clear();
-                p_imu->Reset();
-                state_ikfom state_point_reloc;
-                {
-                    std::lock_guard<std::mutex> lock(mtx_reloc);
-                    state_point_reloc.pos = Eigen::Vector3d(reloc_state._x, reloc_state._y, reloc_state._z);
-                    state_point_reloc.rot = Eigen::Quaterniond(reloc_state._qw, reloc_state._qx,
-                                                reloc_state._qy, reloc_state._qz);
-                }        
-                state_point_reloc.rot.normalize();
-                kf.reset(state_point_reloc);
-                ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
-                
-                ROS_PRINT_INFO("Reloc: pos=(%.2f %.2f %.2f), quat=(%.2f %.2f %.2f %.2f)",
-                    state_point_reloc.pos.x(), state_point_reloc.pos.y(), state_point_reloc.pos.z(),
-                    state_point_reloc.rot.x(), state_point_reloc.rot.y(), state_point_reloc.rot.z(), state_point_reloc.rot.w());
-                relocalize_flag.store(false);
-                flg_first_scan = true;
-                continue;
-            }
-        }   
 
         if(sync_packages(Measures)) 
         {
@@ -1397,6 +1459,12 @@ int main(int argc, char** argv)
             {
                 ROS_PRINT_WARN("No point, skip this scan!");
                 continue;
+            }
+
+            if (reloc_en && init_reg_flag.load())
+            {
+                if (consumeInitialPoseRegistration())
+                    continue;
             }
 
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
@@ -1485,9 +1553,12 @@ int main(int argc, char** argv)
             
             if (sam_enable) {
                 updateSamState(state_point);
-                saveKeyFramesAndFactor(feats_down_body, feats_undistort);
-                update_state_ikfom(); // Update current state_point
-                correctPoses();
+                if (!reloc_en || !map_load || init_reg_done.load())
+                {
+                    saveKeyFramesAndFactor(feats_down_body, feats_undistort);
+                    update_state_ikfom(); // Update current state_point
+                    correctPoses();
+                }
 
                 publishSamMsg();
             }
@@ -1615,7 +1686,7 @@ int main(int argc, char** argv)
     }
     if (sam_enable && map_save)
     {
-        if (exportKeyframeMap2D(map_path))
+        if (exportKeyframeMap(map_path))
             ROS_PRINT_INFO("Saved keyframe map to %s", map_path.c_str());
         else
             ROS_PRINT_WARN("Failed to save keyframe map to %s", map_path.c_str());

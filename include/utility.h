@@ -5,8 +5,13 @@
 #include <deque>
 #include <vector>
 #include <atomic>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include <Eigen/Geometry>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include "ros_utils.h"
 
@@ -50,6 +55,18 @@ inline constexpr float scanTime = 0.1f;
 inline constexpr float scanRangeMin = 0.1f;
 inline constexpr float scanRangeMax = 100.0f;
 
+extern double init_reg_search_radius;
+extern double init_reg_coarse_max_correspondence_distance;
+extern double init_reg_max_correspondence_distance;
+extern double init_reg_fitness_score;
+extern double init_reg_leaf_size;
+extern double init_reg_max_translation_correction;
+extern double init_reg_max_yaw_correction;
+extern double init_reg_min_inlier_ratio;
+extern int init_reg_max_keyframes;
+extern int init_reg_min_source_points;
+extern int init_reg_min_target_points;
+
 extern int ikdtreeSearchNeighborNum;
 extern bool occupancyMapEnabled;
 extern bool mapFrameOriginInitialized;
@@ -60,6 +77,7 @@ extern std::atomic<bool> flg_exit;
 
 void read_frame_params();
 void read_pcl2scan_params();
+void read_reloc_params();
 void read_liosam_params();
 void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,
                                const Eigen::Quaterniond &origin_orientation);
@@ -81,6 +99,105 @@ inline void transformPointOdomToMapInPlace(PointT &point)
     point.x = position.x();
     point.y = position.y();
     point.z = position.z();
+}
+
+template<typename CloudT, typename ProjectPointFn>
+std::vector<float> projectCloudToScanRanges(const CloudT &cloud, ProjectPointFn project_point)
+{
+    std::vector<float> ranges;
+    if (cloud.empty() || scanAngleMax <= scanAngleMin || scanAngleIncrement <= 0.0f)
+        return ranges;
+
+    const int beam_count = std::max(1, static_cast<int>(
+        std::ceil((scanAngleMax - scanAngleMin) / scanAngleIncrement)));
+    ranges.assign(beam_count, std::numeric_limits<float>::infinity());
+
+    for (const auto &point : cloud.points)
+    {
+        pcl::PointXYZI scan_point;
+        if (!project_point(point, scan_point))
+            continue;
+
+        if (!std::isfinite(scan_point.x) || !std::isfinite(scan_point.y))
+            continue;
+
+        const float range = std::hypot(scan_point.x, scan_point.y);
+        if (range < scanRangeMin || range > scanRangeMax)
+            continue;
+
+        const float angle = std::atan2(scan_point.y, scan_point.x);
+        if (angle < scanAngleMin || angle > scanAngleMax)
+            continue;
+
+        const int index = static_cast<int>((angle - scanAngleMin) / scanAngleIncrement);
+        if (index < 0 || index >= beam_count)
+            continue;
+
+        ranges[index] = std::min(ranges[index], range);
+    }
+
+    return ranges;
+}
+
+template<typename CloudT, typename ProjectPointFn>
+pcl::PointCloud<pcl::PointXYZI>::Ptr projectCloudToScanPoints(const CloudT &cloud, ProjectPointFn project_point)
+{
+    pcl::PointCloud<pcl::PointXYZI>::Ptr points(new pcl::PointCloud<pcl::PointXYZI>());
+    if (cloud.empty() || scanAngleMax <= scanAngleMin || scanAngleIncrement <= 0.0f)
+        return points;
+
+    const int beam_count = std::max(1, static_cast<int>(
+        std::ceil((scanAngleMax - scanAngleMin) / scanAngleIncrement)));
+    std::vector<float> best_ranges(beam_count, std::numeric_limits<float>::infinity());
+    std::vector<float> best_x(beam_count, 0.0f);
+    std::vector<float> best_y(beam_count, 0.0f);
+    std::vector<float> best_intensity(beam_count, 0.0f);
+
+    for (const auto &point : cloud.points)
+    {
+        pcl::PointXYZI scan_point;
+        if (!project_point(point, scan_point))
+            continue;
+
+        if (!std::isfinite(scan_point.x) || !std::isfinite(scan_point.y))
+            continue;
+
+        const float range = std::hypot(scan_point.x, scan_point.y);
+        if (range < scanRangeMin || range > scanRangeMax)
+            continue;
+
+        const float angle = std::atan2(scan_point.y, scan_point.x);
+        if (angle < scanAngleMin || angle > scanAngleMax)
+            continue;
+
+        const int index = static_cast<int>((angle - scanAngleMin) / scanAngleIncrement);
+        if (index < 0 || index >= beam_count)
+            continue;
+
+        if (range < best_ranges[index])
+        {
+            best_ranges[index] = range;
+            best_x[index] = scan_point.x;
+            best_y[index] = scan_point.y;
+            best_intensity[index] = scan_point.intensity;
+        }
+    }
+
+    points->reserve(beam_count);
+    for (int i = 0; i < beam_count; ++i)
+    {
+        if (!std::isfinite(best_ranges[i]))
+            continue;
+
+        pcl::PointXYZI scan_point;
+        scan_point.x = best_x[i];
+        scan_point.y = best_y[i];
+        scan_point.z = 0.0f;
+        scan_point.intensity = best_intensity[i];
+        points->push_back(scan_point);
+    }
+
+    return points;
 }
 
 template<typename T>

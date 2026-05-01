@@ -103,7 +103,8 @@ if(USE_ROS1)
 
   add_executable(fastlio_mapping src/laserMapping.cpp 
     include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp 
-    src/utility.cpp src/mapOptimization.cpp)
+    src/utility.cpp src/mapOptimization.cpp
+    src/initialPoseReg.cpp)
   add_executable(cloud_to_occupancy src/cloud_to_Occupancy.cpp)
   add_dependencies(fastlio_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
   add_dependencies(cloud_to_occupancy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -137,7 +138,8 @@ if(USE_ROS2)
     include/ikd-Tree/ikd_Tree.cpp
     src/preprocess.cpp
     src/utility.cpp
-    src/mapOptimization.cpp)
+    src/mapOptimization.cpp
+    src/initialPoseReg.cpp)
   add_executable(cloud_to_occupancy src/cloud_to_Occupancy.cpp)
   ament_target_dependencies(fastlio_mapping
     builtin_interfaces

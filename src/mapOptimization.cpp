@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -44,29 +45,7 @@ using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
 
-/*
-    * A point cloud type that has 6D pose info ([x,y,z,roll,pitch,yaw] intensity is time stamp)
-    */
-struct PointXYZIRPYT
-{
-    PCL_ADD_POINT4D
-    PCL_ADD_INTENSITY;                  // preferred way of adding a XYZ+padding
-    float roll;
-    float pitch;
-    float yaw;
-    double time;
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW   // make sure our new allocators are aligned
-} EIGEN_ALIGN16;                    // enforce SSE padding for correct memory alignment
-
-POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
-                                   (float, x, x) (float, y, y)
-                                   (float, z, z) (float, intensity, intensity)
-                                   (float, roll, roll) (float, pitch, pitch) (float, yaw, yaw)
-                                   (double, time, time))
-
-typedef PointXYZIRPYT  PointTypePose;
-
-typedef pcl::PointXYZI PointType;
+using PointType = pcl::PointXYZI;
 
 // gtsam
 NonlinearFactorGraph gtSAMgraph;
@@ -136,7 +115,9 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud2D(
 gtsam::Pose3 pclPointTogtsamPose3(PointTypePose thisPoint);
 
 constexpr const char *kKeyframePosesFile = "pose.pcd";
-constexpr const char *kKeyframeCloudFolder = "cloud";
+constexpr const char *kKeyframeMapFolder = "KEYFRAMES";
+constexpr const char *kKeyframeCloud2DFolder = "2d";
+constexpr const char *kKeyframeCloud3DFolder = "3d";
 
 void rebuildIsamFromLoadedPoses(const std::vector<PointTypePose> &poses)
 {
@@ -173,13 +154,20 @@ void rebuildIsamFromLoadedPoses(const std::vector<PointTypePose> &poses)
     isamCurrentEstimate = isam->calculateEstimate();
 }
 
-bool exportKeyframeMap2D(
+bool exportKeyframeMap(
     const std::string &directory_path)
 {
     const std::filesystem::path keyframe_dir =
-        std::filesystem::path(directory_path) / "KEYFRAMES_2D";
-    const std::filesystem::path cloud_dir = keyframe_dir / kKeyframeCloudFolder;
-    if (!create_directory(cloud_dir.string()))
+        std::filesystem::path(directory_path) / kKeyframeMapFolder;
+    const std::filesystem::path cloud_2d_dir = keyframe_dir / kKeyframeCloud2DFolder;
+    const std::filesystem::path cloud_3d_dir = keyframe_dir / kKeyframeCloud3DFolder;
+    if (!create_directory(cloud_2d_dir.string()) ||
+        !create_directory(cloud_3d_dir.string()))
+        return false;
+
+    const std::size_t keyframe_count = cloudKeyPoses6D->size();
+    if (denseCloudKeyFrames.size() < keyframe_count ||
+        featCloudKeyFrames.size() < keyframe_count)
         return false;
 
     pcl::PointCloud<PointTypePose> pose_cloud;
@@ -193,25 +181,34 @@ bool exportKeyframeMap2D(
     if (pcl::io::savePCDFileBinary((keyframe_dir / kKeyframePosesFile).string(), pose_cloud) < 0)
         return false;
 
-    for (std::size_t i = 0; i < cloudKeyPoses6D->size(); ++i)
+    for (std::size_t i = 0; i < keyframe_count; ++i)
     {
+        if (!denseCloudKeyFrames[i] || !featCloudKeyFrames[i])
+            return false;
+
         std::ostringstream filename_stream;
         filename_stream << std::setw(6) << std::setfill('0') << i << ".pcd";
         if (pcl::io::savePCDFileBinary(
-                (cloud_dir / filename_stream.str()).string(),
+                (cloud_2d_dir / filename_stream.str()).string(),
                 *denseCloudKeyFrames[i]) < 0)
+            return false;
+
+        if (pcl::io::savePCDFileBinary(
+                (cloud_3d_dir / filename_stream.str()).string(),
+                *featCloudKeyFrames[i]) < 0)
             return false;
     }
 
     return true;
 }
 
-bool importKeyframeMap2D(const std::string &directory_path)
+bool importKeyframeMap(const std::string &directory_path)
 {
     const std::filesystem::path keyframe_dir =
-        std::filesystem::path(directory_path) / "KEYFRAMES_2D";
+        std::filesystem::path(directory_path) / kKeyframeMapFolder;
     const std::filesystem::path pose_path = keyframe_dir / kKeyframePosesFile;
-    const std::filesystem::path cloud_dir = keyframe_dir / kKeyframeCloudFolder;
+    const std::filesystem::path cloud_2d_dir = keyframe_dir / kKeyframeCloud2DFolder;
+    const std::filesystem::path cloud_3d_dir = keyframe_dir / kKeyframeCloud3DFolder;
 
     pcl::PointCloud<PointTypePose>::Ptr pose_cloud(new pcl::PointCloud<PointTypePose>());
     if (pcl::io::loadPCDFile<PointTypePose>(pose_path.string(), *pose_cloud) < 0 ||
@@ -243,14 +240,17 @@ bool importKeyframeMap2D(const std::string &directory_path)
         pcl::PointCloud<PointType>::Ptr loaded_cloud(new pcl::PointCloud<PointType>());
         std::ostringstream filename_stream;
         filename_stream << std::setw(6) << std::setfill('0') << i << ".pcd";
-        const std::filesystem::path cloud_path = cloud_dir / filename_stream.str();
-        if (std::filesystem::exists(cloud_path))
-        {
-            if (pcl::io::loadPCDFile<PointType>(cloud_path.string(), *loaded_cloud) < 0)
-                return false;
-        }
+        const std::filesystem::path cloud_2d_path = cloud_2d_dir / filename_stream.str();
+        if (pcl::io::loadPCDFile<PointType>(cloud_2d_path.string(), *loaded_cloud) < 0)
+            return false;
+
+        pcl::PointCloud<PointType>::Ptr loaded_3d_cloud(new pcl::PointCloud<PointType>());
+        const std::filesystem::path cloud_3d_path = cloud_3d_dir / filename_stream.str();
+        if (pcl::io::loadPCDFile<PointType>(cloud_3d_path.string(), *loaded_3d_cloud) < 0)
+            return false;
+
         loaded_dense_clouds.push_back(loaded_cloud);
-        loaded_feat_clouds.push_back(pcl::PointCloud<PointType>::Ptr(new pcl::PointCloud<PointType>()));
+        loaded_feat_clouds.push_back(loaded_3d_cloud);
     }
 
     rebuildIsamFromLoadedPoses(loaded_poses);
@@ -424,68 +424,11 @@ PointType transformFrontendPointToImu(const pcl::PointXYZINormal &pt)
 
 bool keepDenseKeyframePoint(const PointType &point)
 {
-    return point.z >= scanSliceMinZ && point.z <= scanSliceMaxZ;
-}
-
-pcl::PointCloud<PointType>::Ptr projectDenseKeyframeToScan2D(
-    const pcl::PointCloud<PointType>::Ptr &cloudIn)
-{
-    pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
-    if (cloudIn->empty())
-        return cloudOut;
-
-    const int beam_count = std::max(
-        1,
-        static_cast<int>(std::ceil(
-            (scanAngleMax - scanAngleMin) /
-            scanAngleIncrement)));
-
-    std::vector<float> best_ranges(beam_count, std::numeric_limits<float>::infinity());
-    std::vector<float> best_x(beam_count, 0.0f);
-    std::vector<float> best_y(beam_count, 0.0f);
-    std::vector<float> best_intensity(beam_count, 0.0f);
-
-    for (const auto &point : cloudIn->points)
-    {
-        if (!std::isfinite(point.x) || !std::isfinite(point.y))
-            continue;
-
-        const float range = std::hypot(point.x, point.y);
-        if (range < scanRangeMin || range > scanRangeMax)
-            continue;
-
-        const float angle = std::atan2(point.y, point.x);
-        if (angle < scanAngleMin || angle > scanAngleMax)
-            continue;
-
-        const int index = static_cast<int>(
-            (angle - scanAngleMin) / scanAngleIncrement);
-        if (index < 0 || index >= beam_count)
-            continue;
-
-        if (range < best_ranges[index])
-        {
-            best_ranges[index] = range;
-            best_x[index] = point.x;
-            best_y[index] = point.y;
-            best_intensity[index] = point.intensity;
-        }
-    }
-
-    cloudOut->reserve(beam_count);
-    for (int i = 0; i < beam_count; ++i)
-    {
-        if (!std::isfinite(best_ranges[i]))
-            continue;
-
-        PointType point;
-        point.x = best_x[i];
-        point.y = best_y[i];
-        point.z = 0.0f;
-        point.intensity = best_intensity[i];
-        cloudOut->push_back(point);
-    }
-    return cloudOut;
+    return std::isfinite(point.x) &&
+           std::isfinite(point.y) &&
+           std::isfinite(point.z) &&
+           point.z >= scanSliceMinZ &&
+           point.z <= scanSliceMaxZ;
 }
 
 void MapOptimizationInit()
@@ -811,7 +754,12 @@ void saveKeyFramesAndFactor(
         }
     }
 
-    denseCloudKeyFrame = projectDenseKeyframeToScan2D(denseCloudKeyFrame);
+    denseCloudKeyFrame = projectCloudToScanPoints(
+        *denseCloudKeyFrame,
+        [](const PointType &point, pcl::PointXYZI &scan_point) {
+            scan_point = point;
+            return true;
+        });
 
     featCloudKeyFrames.push_back(featCloudKeyFrame);
     denseCloudKeyFrames.push_back(denseCloudKeyFrame);

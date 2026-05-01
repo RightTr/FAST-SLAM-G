@@ -39,7 +39,6 @@ res_save:
 
 reloc:
   reloc_en: true
-  reloc_topic: "reloc/manual"
 
 zupt:
     use_zupt: false              # enable zero velocity update

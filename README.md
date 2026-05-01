@@ -70,7 +70,7 @@ ros2 launch fast_lio_sam_g gridmap_mid360.launch.py
 
 ### Relocalization
 
-The modified system supports relocalization using manually set odometry poses. Once odometry poses are published to the */reloc_topic* (according to the following .yaml file), the system will reset the system and the initial pose according to your input.
+The modified system supports relocalization from RViz `2D Pose Estimate`. The pose is received on `/initialpose`, then registered against the loaded 3D keyframe clouds before the filter state is reset.
 
 Run relocalization mode:
 
@@ -80,13 +80,13 @@ Run relocalization mode:
 cd fastlio_ws
 source devel/setup.bash
 roslaunch fast_lio_sam_g reloc_mid360.launch
-# Publish geometry_msgs::PoseStamped to the /reloc_topic
+# Use RViz 2D Pose Estimate, which publishes geometry_msgs::PoseWithCovarianceStamped to /initialpose
 
 # ROS2
 cd fastlio_ws
 source install/setup.bash
 ros2 launch fast_lio_sam_g reloc_mid360.launch.py
-# Publish geometry_msgs::msg::PoseStamped to the /reloc_topic
+# Use RViz 2D Pose Estimate, which publishes geometry_msgs::msg::PoseWithCovarianceStamped to /initialpose
 ```
 
 ## Stationary detection and adaptive weight handling
@@ -128,9 +128,9 @@ The current design assumes:
 
 * the 2D navigation map should stay consistent with the 3D map
 
-### Export / Import 2D Keyframe Map
+### Export / Import Keyframe Map
 
-Set `gridmap/map_path` to a directory path. When LIO-SAM backend is enabled, set `gridmap/map_save` to `true` to save the keyframe map during shutdown. Set `gridmap/map_load` to `true` to load the saved keyframe map during startup.
+Set `keyframe_map/map_path` to a directory path. When LIO-SAM backend is enabled, set `keyframe_map/map_save` to `true` to save the keyframe map during shutdown. Set `keyframe_map/map_load` to `true` to load the saved keyframe map during startup. The map is stored under `KEYFRAMES/`, with `2d/` used for grid mapping and online scan publishing and `3d/` used for relocalization.
 
 ## 📝 TODO List
 
