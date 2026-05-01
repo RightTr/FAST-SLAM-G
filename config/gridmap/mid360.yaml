@@ -2,8 +2,9 @@ common:
     lid_topic:  "/livox/lidar"
     imu_topic:  "/livox/imu"
     lidarFrame: "lidar"
-    baselinkFrame: "base_link"
-    highFrequencyBaselinkFrame: "base_link_hf"
+    IMUlinkFrame: "imu_link"
+    baseLinkFrame: "base_link"
+    highFrequencyIMUlinkFrame: "imu_link_hf"
     odometryFrame: "odom"
     mapFrame: "map"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
@@ -11,7 +12,7 @@ common:
                                 # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 keyframe_map:
-    map_load: true
+    map_load: false
     map_save: false
     map_path: ""
 
@@ -28,11 +29,17 @@ mapping:
     fov_degree:    360.0
     det_range:     100.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+    # LiDAR -> IMU extrinsic: p_imu = R * p_lidar + T
     extrinsic_R: [0.999996, -0.00129,  -0.00230,
                 0.00129,   0.999999, -0.00130,
                 0.00230,   0.00130,   0.999996]
 
     extrinsic_T: [-0.009673, -0.037003, 0.047590]
+    # base_link -> lidar TF: p_base = R * p_lidar + T
+    base_link_to_lidar_R: [1.0, 0.0, 0.0,
+                           0.0, 1.0, 0.0,
+                           0.0, 0.0, 1.0]
+    base_link_to_lidar_T: [0.250, 0.056, 0.405]
 
 lio_sam:
   # CPU Params
@@ -40,9 +47,9 @@ lio_sam:
   mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
 
   # Surrounding map
-  surroundingkeyframeAddingDistThreshold: 0.5   # meters, regulate keyframe adding threshold
-  surroundingkeyframeAddingAngleThreshold: 0.1  # radians, regulate keyframe adding threshold
-  surroundingKeyframeDensity: 2.0               # meters, downsample surrounding keyframe poses
+  surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
+  surroundingkeyframeAddingAngleThreshold: 0.5  # radians, regulate keyframe adding threshold
+  surroundingKeyframeDensity: 4.0               # meters, downsample surrounding keyframe poses
   surroundingKeyframeSearchRadius: 50.0         # meters, within n meters scan-to-map optimization (when loop closure disabled)
 
   # Loop closure
@@ -61,7 +68,7 @@ lio_sam:
 
 publish:
     path_en:  false
-    use_lidar_frame: true        # false: publish IMU/base_link pose; true: publish LiDAR pose. TF chain stays unchanged.
+    pose_frame: 2                # 0: imu, 1: lidar, 2: base_link
     use_current_time: true       # false: publish all msg with current time
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
@@ -83,7 +90,7 @@ res_save:
     frame_save_en: false
 
 zupt:
-    use_zupt: true                    # enable adaptive zero velocity update
+    use_zupt: false                    # enable adaptive zero velocity update
     zupt_acc_var_threshold:  0.0001   # (m/s²)² per-axis acc variance → full-confidence threshold
     zupt_gyro_var_threshold: 0.00001  # (rad/s)² per-axis gyro variance → full-confidence threshold
 
@@ -105,7 +112,7 @@ zupt:
 
 occupancy_map:
     gridmap_enabled: true
-    resolution: 0.03
+    resolution: 0.08
 
 pointcloud_to_laserscan:
     min_height: -0.4

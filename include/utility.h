@@ -17,10 +17,13 @@
 
 //Topics
 extern std::string lidarFrame;
-extern std::string baselinkFrame;
+extern std::string IMUlinkFrame;
+extern std::string baseLinkFrame;
 extern std::string odometryFrame;
 extern std::string mapFrame;
-extern std::string highFrequencyBaselinkFrame;
+extern std::string highFrequencyIMUlinkFrame;
+extern Eigen::Vector3d baseLinkToLidarTranslation;
+extern Eigen::Quaterniond baseLinkToLidarRotation;
 
 // CPU Params
 extern int numberOfCores;

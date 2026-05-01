@@ -8,17 +8,21 @@ namespace
 {
 Eigen::Quaterniond yawOnlyQuaternion(const Eigen::Quaterniond &orientation)
 {
-    const Eigen::Vector3d euler = orientation.toRotationMatrix().eulerAngles(2, 1, 0);
-    return Eigen::Quaterniond(Eigen::AngleAxisd(euler[0], Eigen::Vector3d::UnitZ())).normalized();
+    const Eigen::Matrix3d rotation = orientation.toRotationMatrix();
+    const double yaw = std::atan2(rotation(1, 0), rotation(0, 0));
+    return Eigen::Quaterniond(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ())).normalized();
 }
 } // namespace
 
 // Topics
 string lidarFrame;
-string baselinkFrame;
+string IMUlinkFrame;
+string baseLinkFrame;
 string odometryFrame;
 string mapFrame;
-string highFrequencyBaselinkFrame;
+string highFrequencyIMUlinkFrame;
+Eigen::Vector3d baseLinkToLidarTranslation = Eigen::Vector3d::Zero();
+Eigen::Quaterniond baseLinkToLidarRotation = Eigen::Quaterniond::Identity();
 
 // CPU Params
 int numberOfCores;
@@ -89,10 +93,11 @@ void read_liosam_params() {
 
 void read_frame_params() {
     rosparam_get("common/lidarFrame", lidarFrame, std::string("lidar"));
-    rosparam_get("common/baselinkFrame", baselinkFrame, std::string("base_link"));
+    rosparam_get("common/IMUlinkFrame", IMUlinkFrame, std::string("imu_link"));
+    rosparam_get("common/baseLinkFrame", baseLinkFrame, std::string("base_link"));
     rosparam_get("common/odometryFrame", odometryFrame, std::string("odom"));
     rosparam_get("common/mapFrame", mapFrame, std::string("map"));
-    rosparam_get("common/highFrequencyBaselinkFrame", highFrequencyBaselinkFrame, std::string("base_link_hf"));
+    rosparam_get("common/highFrequencyIMUlinkFrame", highFrequencyIMUlinkFrame, std::string("imu_link_hf"));
 }
 
 void read_pcl2scan_params() {

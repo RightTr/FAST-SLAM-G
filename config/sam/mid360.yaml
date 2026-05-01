@@ -2,8 +2,9 @@ common:
     lid_topic:  "/livox/lidar"
     imu_topic:  "/livox/imu"
     lidarFrame: "lidar"
-    baselinkFrame: "base_link"
-    highFrequencyBaselinkFrame: "base_link_hf"
+    IMUlinkFrame: "imu_link"
+    baseLinkFrame: "base_link"
+    highFrequencyIMUlinkFrame: "imu_link_hf"
     odometryFrame: "odom"
     mapFrame: "map"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
@@ -23,11 +24,17 @@ mapping:
     fov_degree:    360.0
     det_range:     100.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+    # LiDAR -> IMU extrinsic: p_imu = R * p_lidar + T
     extrinsic_R: [0.999996, -0.00129,  -0.00230,
                 0.00129,   0.999999, -0.00130,
                 0.00230,   0.00130,   0.999996]
 
     extrinsic_T: [-0.009673, -0.037003, 0.047590]
+    # base_link -> lidar TF: p_base = R * p_lidar + T
+    base_link_to_lidar_R: [1.0, 0.0, 0.0,
+                           0.0, 1.0, 0.0,
+                           0.0, 0.0, 1.0]
+    base_link_to_lidar_T: [0.250, 0.056, 0.405]
     
 lio_sam:
 
@@ -56,7 +63,7 @@ lio_sam:
 
 publish:
     path_en:  false
-    use_lidar_frame: true      # true: publish LiDAR-frame pose/scan, including odom TF child frame
+    pose_frame: 2                # 0: imu, 1: lidar, 2: base_link
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame

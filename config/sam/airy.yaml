@@ -2,8 +2,8 @@ common:
     lid_topic:  "/rslidar_points"
     imu_topic:  "/rslidar_imu_data"
     lidarFrame: "lidar"
-    baselinkFrame: "base_link"
-    highFrequencyBaselinkFrame: "base_link_hf"
+    IMUlinkFrame: "imu_link"
+    highFrequencyIMUlinkFrame: "imu_link_hf"
     odometryFrame: "odom"
     mapFrame: "map"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
