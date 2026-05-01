@@ -74,16 +74,7 @@ frontend_scan:
 reloc:
     reloc_en: true
     init_reg_search_radius: 8.0
-    init_reg_coarse_max_correspondence_distance: 2.0
-    init_reg_max_correspondence_distance: 0.2
     init_reg_fitness_score: 0.03
-    init_reg_leaf_size: 0.05
-    init_reg_max_translation_correction: 0.8
-    init_reg_max_yaw_correction: 0.35
-    init_reg_min_inlier_ratio: 0.6
-    init_reg_max_keyframes: 20
-    init_reg_min_source_points: 50
-    init_reg_min_target_points: 200
 
 res_save:
     res_save_en: false

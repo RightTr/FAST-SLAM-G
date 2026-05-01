@@ -56,16 +56,7 @@ inline constexpr float scanRangeMin = 0.1f;
 inline constexpr float scanRangeMax = 100.0f;
 
 extern double init_reg_search_radius;
-extern double init_reg_coarse_max_correspondence_distance;
-extern double init_reg_max_correspondence_distance;
 extern double init_reg_fitness_score;
-extern double init_reg_leaf_size;
-extern double init_reg_max_translation_correction;
-extern double init_reg_max_yaw_correction;
-extern double init_reg_min_inlier_ratio;
-extern int init_reg_max_keyframes;
-extern int init_reg_min_source_points;
-extern int init_reg_min_target_points;
 
 extern int ikdtreeSearchNeighborNum;
 extern bool occupancyMapEnabled;

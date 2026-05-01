@@ -607,36 +607,16 @@ bool consumeInitialPoseRegistration()
 
     Eigen::Vector3d registered_position;
     Eigen::Quaterniond registered_orientation;
-    std::string failure_reason;
     const bool success = registerInitialPoseToKeyframes3D(
         source_cloud,
         initial_position,
         initial_orientation,
         registered_position,
         registered_orientation,
-        &failure_reason);
+        nullptr);
 
     if (!success)
-    {
-        ROS_PRINT_WARN("Initialpose registration failed: %s",
-            failure_reason.empty() ? "unknown reason" : failure_reason.c_str());
         return false;
-    }
-
-    const double initial_yaw =
-        initial_orientation.normalized().toRotationMatrix().eulerAngles(2, 1, 0)[0];
-    const double registered_yaw =
-        registered_orientation.normalized().toRotationMatrix().eulerAngles(2, 1, 0)[0];
-    ROS_PRINT_INFO(
-        "Initialpose registration accepted: initial=(%.3f, %.3f, yaw=%.3f), registered=(%.3f, %.3f, yaw=%.3f), delta_xy=%.3f, delta_yaw=%.3f",
-        initial_position.x(),
-        initial_position.y(),
-        initial_yaw,
-        registered_position.x(),
-        registered_position.y(),
-        registered_yaw,
-        std::hypot(registered_position.x() - initial_position.x(), registered_position.y() - initial_position.y()),
-        std::atan2(std::sin(registered_yaw - initial_yaw), std::cos(registered_yaw - initial_yaw)));
 
     state_ikfom state_updated = kf.get_x();
     state_updated.pos = registered_position;
