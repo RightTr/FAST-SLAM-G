@@ -3,14 +3,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/registration/icp.h>
 
 #include "ikd-Tree/ikdtree_public.h"
@@ -35,7 +33,6 @@ constexpr int kIcpIterations = 100;
 constexpr float kLeafSize = 0.05f;
 constexpr double kMaxDeltaXY = 0.8;
 constexpr double kMaxDeltaYaw = 0.35;
-constexpr double kMinInlierRatio = 0.6;
 constexpr int kMaxKeyframes = 5;
 
 bool run_icp(
@@ -43,7 +40,8 @@ bool run_icp(
     const pcl::PointCloud<PointType>::ConstPtr &target_ds,
     const double max_corr,
     const Eigen::Matrix4f &guess,
-    Eigen::Matrix4f &final_transform)
+    Eigen::Matrix4f &final_transform,
+    double &fitness_score)
 {
     pcl::IterativeClosestPoint<PointType, PointType> icp;
     icp.setMaxCorrespondenceDistance(max_corr);
@@ -58,6 +56,7 @@ bool run_icp(
     icp.align(aligned, guess);
 
     final_transform = icp.getFinalTransformation();
+    fitness_score = icp.getFitnessScore(max_corr);
     return icp.hasConverged();
 }
 }
@@ -165,43 +164,16 @@ bool registerInitialPoseToKeyframes3D(
             initial_yaw).matrix();
 
     Eigen::Matrix4f icp_guess = initial_guess;
-    if (!run_icp(source_ds, target_ds, kCoarseMaxCorr, initial_guess, icp_guess))
+    double fitness_score = 0.0;
+    if (!run_icp(source_ds, target_ds, kCoarseMaxCorr, initial_guess, icp_guess, fitness_score))
         return false;
 
     Eigen::Matrix4f final_icp_transform = icp_guess;
-    if (!run_icp(source_ds, target_ds, kFineMaxCorr, icp_guess, final_icp_transform))
+    if (!run_icp(source_ds, target_ds, kFineMaxCorr, icp_guess, final_icp_transform, fitness_score))
         return false;
 
-    pcl::PointCloud<PointType> source_aligned;
-    pcl::transformPointCloud(*source_ds, source_aligned, final_icp_transform);
-    pcl::KdTreeFLANN<PointType> target_tree;
-    target_tree.setInputCloud(target_ds);
-    const double fine_max_corr_sq = kFineMaxCorr * kFineMaxCorr;
-    double inlier_fitness_score = std::numeric_limits<double>::max();
-    double inlier_ratio = 0.0;
-    int inlier_count = 0;
-    double inlier_sq_dist_sum = 0.0;
-    pcl::Indices nn_indices(1);
-    std::vector<float> nn_dists(1);
-    for (const auto &point : source_aligned.points)
-    {
-        if (target_tree.nearestKSearch(point, 1, nn_indices, nn_dists) <= 0)
-            continue;
-
-        if (static_cast<double>(nn_dists[0]) > fine_max_corr_sq)
-            continue;
-
-        inlier_sq_dist_sum += nn_dists[0];
-        ++inlier_count;
-    }
-    if (!source_aligned.empty())
-        inlier_ratio = static_cast<double>(inlier_count) / static_cast<double>(source_aligned.size());
-    if (inlier_count > 0)
-        inlier_fitness_score = inlier_sq_dist_sum / static_cast<double>(inlier_count);
-
-    if (inlier_ratio < kMinInlierRatio ||
-        (init_reg_fitness_score > 0.0 &&
-         inlier_fitness_score > init_reg_fitness_score))
+    if (init_reg_fitness_score > 0.0 &&
+        fitness_score > init_reg_fitness_score)
         return false;
 
     const Eigen::Affine3f final_transform(final_icp_transform);
