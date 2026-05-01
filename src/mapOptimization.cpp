@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <unordered_set>
 
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
@@ -118,6 +119,16 @@ constexpr const char *kKeyframePosesFile = "pose.pcd";
 constexpr const char *kKeyframeMapFolder = "KEYFRAMES";
 constexpr const char *kKeyframeCloud2DFolder = "2d";
 constexpr const char *kKeyframeCloud3DFolder = "3d";
+constexpr float kDynamicHeightBand = 0.6f;
+constexpr float kDynamicCellSize = 0.10f;
+
+std::uint64_t denseCellKey(const PointType &point)
+{
+    const auto cell_x = static_cast<std::int64_t>(std::floor(point.x / kDynamicCellSize));
+    const auto cell_y = static_cast<std::int64_t>(std::floor(point.y / kDynamicCellSize));
+    return (static_cast<std::uint64_t>(cell_x) << 32) ^
+           (static_cast<std::uint64_t>(cell_y) & 0xffffffffULL);
+}
 
 void rebuildIsamFromLoadedPoses(const std::vector<PointTypePose> &poses)
 {
@@ -746,9 +757,20 @@ void saveKeyFramesAndFactor(
         featCloudKeyFrame->push_back(transformFrontendPointToImu(pt));
     }
 
+    std::unordered_set<std::uint64_t> dynamic_cells;
+    for (const auto &pt : feats_undistort->points) {
+        const PointType point = transformFrontendPointToImu(pt);
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+            continue;
+
+        if (point.z > scanSliceMaxZ && point.z <= scanSliceMaxZ + kDynamicHeightBand)
+            dynamic_cells.insert(denseCellKey(point));
+    }
+
     for (const auto &pt : feats_undistort->points) {
         PointType point = transformFrontendPointToImu(pt);
-        if (keepDenseKeyframePoint(point)) {
+        if (keepDenseKeyframePoint(point) &&
+            dynamic_cells.find(denseCellKey(point)) == dynamic_cells.end()) {
             point.z = 0.0f;
             denseCloudKeyFrame->push_back(point);
         }
