@@ -108,6 +108,7 @@ mutex mtx_initialpose;
 Pose initialpose_state;
 std::atomic<bool> init_reg_flag(false);
 std::atomic<bool> init_reg_done(false);
+std::atomic<bool> drop_flag(false);
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -293,6 +294,9 @@ void lasermap_fov_segment()
 
 void standard_pcl_cbk(const Pcl2MsgConstPtr &msg) 
 {
+    if (drop_flag.load())
+        return;
+
     mtx_buffer.lock();
     scan_count ++;
     double preprocess_start_time = omp_get_wtime();
@@ -317,6 +321,9 @@ double timediff_lidar_wrt_imu = 0.0;
 bool   timediff_set_flg = false;
 void livox_pcl_cbk(const LivoxCustomMsgConstPtr &msg) 
 {
+    if (drop_flag.load())
+        return;
+
     mtx_buffer.lock();
     double preprocess_start_time = omp_get_wtime();
     scan_count ++;
@@ -352,6 +359,9 @@ void livox_pcl_cbk(const LivoxCustomMsgConstPtr &msg)
 
 void imu_cbk(const ImuMsgConstPtr &msg_in) 
 {   
+    if (drop_flag.load())
+        return;
+
     publish_count ++;
     // cout<<"IMU got at: "<<get_ros_time_sec(msg_in->header.stamp)<<endl;
     ImuMsgPtr msg(new ImuMsg(*msg_in));
@@ -393,6 +403,17 @@ void imu_cbk(const ImuMsgConstPtr &msg_in)
     imu_buffer.push_back(msg);
     mtx_buffer.unlock();
     sig_buffer.notify_all();
+}
+
+void clearMeasurementBuffer()
+{
+    std::lock_guard<std::mutex> lock(mtx_buffer);
+    lidar_buffer.clear();
+    time_buffer.clear();
+    imu_buffer.clear();
+    lidar_pushed = false;
+    Measures.imu.clear();
+    Measures.lidar->clear();
 }
 
 void initialpose_cbk(const PoseWithCovarianceStampedMsgConstPtr &msg_in)
@@ -1409,6 +1430,11 @@ int main(int argc, char** argv)
     while (ros_ok() && !flg_exit)
     {
         spin_once();
+        if (drop_flag.exchange(false))
+        {
+            clearMeasurementBuffer();
+            continue;
+        }
 
         if(sync_packages(Measures)) 
         {
@@ -1443,8 +1469,10 @@ int main(int argc, char** argv)
 
             if (reloc_en && init_reg_flag.load())
             {
-                if (consumeInitialPoseRegistration())
-                    continue;
+                consumeInitialPoseRegistration();
+                clearMeasurementBuffer();
+                drop_flag.store(true);
+                continue;
             }
 
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? \
