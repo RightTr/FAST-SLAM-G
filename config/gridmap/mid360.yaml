@@ -12,7 +12,7 @@ common:
                                 # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 keyframe_map:
-    map_load: true
+    map_load: false
     map_save: false
     map_path: ""
 
