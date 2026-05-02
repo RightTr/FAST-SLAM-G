@@ -96,11 +96,11 @@ controller_server:
       angular_dist_threshold: 0.30
       angular_disengage_threshold: 0.12
       forward_sampling_distance: 0.80
-      rotate_to_heading_angular_vel: 3.0
-      max_angular_accel: 4.5
+      rotate_to_heading_angular_vel: 3.4
+      max_angular_accel: 5.5
       simulate_ahead_time: 0.5
       rotate_to_goal_heading: false
-      desired_linear_vel: 2.60
+      desired_linear_vel: 3.00
       lookahead_dist: 0.25
       min_lookahead_dist: 0.10
       max_lookahead_dist: 0.35
@@ -116,7 +116,7 @@ controller_server:
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 1.20
-      regulated_linear_scaling_min_speed: 0.08
+      regulated_linear_scaling_min_speed: 0.15
       allow_reversing: false
       max_robot_pose_search_dist: 10.0
       use_interpolation: true
@@ -243,9 +243,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.3
     simulate_ahead_time: 2.0
-    max_rotational_vel: 3.0
+    max_rotational_vel: 3.4
     min_rotational_vel: 0.2
-    rotational_acc_lim: 4.5
+    rotational_acc_lim: 5.5
 
 waypoint_follower:
   ros__parameters:
@@ -264,10 +264,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: CLOSED_LOOP
-    max_velocity: [2.60, 0.0, 3.0]
-    min_velocity: [-0.60, 0.0, -3.0]
-    max_accel: [6.0, 0.0, 4.5]
-    max_decel: [-6.0, 0.0, -4.5]
+    max_velocity: [3.00, 0.0, 3.4]
+    min_velocity: [-0.60, 0.0, -3.4]
+    max_accel: [7.0, 0.0, 5.5]
+    max_decel: [-7.0, 0.0, -5.5]
     odom_topic: /OdometryHighFreq
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]

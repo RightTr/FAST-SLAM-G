@@ -13,3 +13,4 @@ IMU_POSES
 .codex
 DESIGN.md
 KEYFRAMES
+waypoints/waypoints.yaml

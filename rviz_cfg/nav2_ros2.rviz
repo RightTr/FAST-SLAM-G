@@ -152,6 +152,20 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /Odometry
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Waypoints
+      Namespaces:
+        waypoint_directions: true
+        waypoint_names: true
+        waypoint_points: true
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /waypoints_markers
+      Value: true
     - Class: rviz_common/Group
       Displays:
         - Alpha: 0.45

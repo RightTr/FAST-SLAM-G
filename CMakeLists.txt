@@ -178,7 +178,17 @@ if(USE_ROS2)
   DIRECTORY
     launch_ROS2
     config
+    map
+    waypoints
     DESTINATION share/${PROJECT_NAME}
+  )
+  install(
+    PROGRAMS
+      waypoints/waypoint_record.py
+      waypoints/waypoint_publish.py
+      waypoints/waypoint_markers.py
+      tools/occupancy_map_editor.py
+    DESTINATION lib/${PROJECT_NAME}
   )
   install(
     FILES 
