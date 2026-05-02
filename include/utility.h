@@ -53,10 +53,10 @@ extern float scanSliceMinZ;
 extern float scanSliceMaxZ;
 extern float scanAngleMin;
 extern float scanAngleMax;
+extern float scanRangeMax;
 inline constexpr float scanAngleIncrement = 0.00436f;
 inline constexpr float scanTime = 0.1f;
 inline constexpr float scanRangeMin = 0.1f;
-inline constexpr float scanRangeMax = 100.0f;
 
 extern double init_reg_search_radius;
 extern double init_reg_fitness_score;

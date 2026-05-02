@@ -1083,9 +1083,20 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
         TransformStampedMsg tf_msg;
         tf_msg.header.stamp = msg.header.stamp;
         tf_msg.header.frame_id = odometryFrame;
-        tf_msg.child_frame_id = highFrequencyIMUlinkFrame;
-        const Eigen::Isometry3d imu_odom_pose = publishedOdomFromInternalWorld * imu_pose;
-        set_geometry_transform(tf_msg.transform, imu_odom_pose);
+        switch (publish_pose_frame)
+        {
+        case PublishPoseFrame::Imu:
+            tf_msg.child_frame_id = highFrequencyIMUlinkFrame;
+            set_geometry_transform(
+                tf_msg.transform,
+                publishedOdomFromInternalWorld * imu_pose);
+            break;
+        case PublishPoseFrame::Lidar:
+        case PublishPoseFrame::BaseLink:
+            tf_msg.child_frame_id = published_pose_frame_id();
+            set_geometry_transform(tf_msg.transform, published_pose);
+            break;
+        }
 
 #ifdef USE_ROS1
         static tf::TransformBroadcaster br_hf;
@@ -1128,19 +1139,8 @@ void publish_odometry(const OdomPublisher & pubOdomAftMapped, const Eigen::Isome
 
     ros_publish(pubOdomAftMapped, odomAftMapped);
 
-    TransformStampedMsg tf_msg;
-    tf_msg.header.stamp = odomAftMapped.header.stamp;
-    tf_msg.header.frame_id = odometryFrame;
-    tf_msg.child_frame_id = IMUlinkFrame;
-    const Eigen::Isometry3d imu_odom_pose = publishedOdomFromInternalWorld * imu_internal_pose;
-    set_geometry_transform(tf_msg.transform, imu_odom_pose);
-
-#ifdef USE_ROS1
-    static tf::TransformBroadcaster br_odom;
-#elif defined(USE_ROS2)
-    static tf2_ros::TransformBroadcaster br_odom(get_ros_node());
-#endif
-    br_odom.sendTransform(tf_msg);
+    // The high-frequency odometry thread is the single authority for odom -> robot TF.
+    // Publishing the same TF here as well can make Nav2 sample alternating poses.
 }
 
 void publish_global_odometry(const OdomPublisher & pubGlobalOdom, const Eigen::Isometry3d& imu_internal_pose)
@@ -1374,6 +1374,14 @@ int main(int argc, char** argv)
                               base_to_lidar_R[3], base_to_lidar_R[4], base_to_lidar_R[5],
                               base_to_lidar_R[6], base_to_lidar_R[7], base_to_lidar_R[8];
     baseLinkToLidarRotation = Eigen::Quaterniond(base_to_lidar_rotation).normalized();
+    ROS_PRINT_INFO(
+        "publish pose_frame=%d, Nav2 robot frame should be '%s'. "
+        "base_link -> lidar uses lidar origin in base_link: [%.3f, %.3f, %.3f]",
+        static_cast<int>(publish_pose_frame),
+        baseLinkFrame.c_str(),
+        baseLinkToLidarTranslation.x(),
+        baseLinkToLidarTranslation.y(),
+        baseLinkToLidarTranslation.z());
     rosparam_get("zupt/use_zupt",                use_zupt,                false);
     rosparam_get("zupt/zupt_acc_var_threshold",  zupt_acc_var_threshold,  0.001);
     rosparam_get("zupt/zupt_gyro_var_threshold", zupt_gyro_var_threshold, 0.0001);
@@ -1698,22 +1706,46 @@ int main(int argc, char** argv)
 
             TransformStampedMsg tf_msg;
             tf_msg.header.stamp = publish_stamp;
-            tf_msg.header.frame_id = IMUlinkFrame;
-            tf_msg.child_frame_id = baseLinkFrame;
             const Eigen::Isometry3d base_from_lidar =
                 makeIsometry(baseLinkToLidarTranslation, baseLinkToLidarRotation);
-            set_geometry_transform(
-                tf_msg.transform,
+            const Eigen::Isometry3d imu_from_lidar =
                 makeIsometry(
                     state_point.offset_T_L_I,
-                    Eigen::Quaterniond(state_point.offset_R_L_I.toRotationMatrix())) *
-                    base_from_lidar.inverse());
-
+                    Eigen::Quaterniond(state_point.offset_R_L_I.toRotationMatrix()));
+            const Eigen::Isometry3d imu_from_base =
+                imu_from_lidar * base_from_lidar.inverse();
             TransformStampedMsg tf_lidar_msg;
             tf_lidar_msg.header.stamp = publish_stamp;
-            tf_lidar_msg.header.frame_id = baseLinkFrame;
-            tf_lidar_msg.child_frame_id = lidarFrame;
-            set_geometry_transform(tf_lidar_msg.transform, base_from_lidar);
+            switch (publish_pose_frame)
+            {
+            case PublishPoseFrame::Imu:
+                tf_msg.header.frame_id = IMUlinkFrame;
+                tf_msg.child_frame_id = baseLinkFrame;
+                set_geometry_transform(tf_msg.transform, imu_from_base);
+
+                tf_lidar_msg.header.frame_id = baseLinkFrame;
+                tf_lidar_msg.child_frame_id = lidarFrame;
+                set_geometry_transform(tf_lidar_msg.transform, base_from_lidar);
+                break;
+            case PublishPoseFrame::Lidar:
+                tf_msg.header.frame_id = lidarFrame;
+                tf_msg.child_frame_id = baseLinkFrame;
+                set_geometry_transform(tf_msg.transform, base_from_lidar.inverse());
+
+                tf_lidar_msg.header.frame_id = baseLinkFrame;
+                tf_lidar_msg.child_frame_id = IMUlinkFrame;
+                set_geometry_transform(tf_lidar_msg.transform, imu_from_base.inverse());
+                break;
+            case PublishPoseFrame::BaseLink:
+                tf_msg.header.frame_id = baseLinkFrame;
+                tf_msg.child_frame_id = IMUlinkFrame;
+                set_geometry_transform(tf_msg.transform, imu_from_base.inverse());
+
+                tf_lidar_msg.header.frame_id = baseLinkFrame;
+                tf_lidar_msg.child_frame_id = lidarFrame;
+                set_geometry_transform(tf_lidar_msg.transform, base_from_lidar);
+                break;
+            }
 
 #ifdef USE_ROS1
             static tf::TransformBroadcaster br_lidar;

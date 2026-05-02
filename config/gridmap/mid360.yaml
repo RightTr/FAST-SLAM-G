@@ -47,9 +47,9 @@ lio_sam:
   mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
 
   # Surrounding map
-  surroundingkeyframeAddingDistThreshold: 1.0   # meters, regulate keyframe adding threshold
-  surroundingkeyframeAddingAngleThreshold: 0.5  # radians, regulate keyframe adding threshold
-  surroundingKeyframeDensity: 4.0               # meters, downsample surrounding keyframe poses
+  surroundingkeyframeAddingDistThreshold: 0.5   # meters, regulate keyframe adding threshold
+  surroundingkeyframeAddingAngleThreshold: 0.1  # radians, regulate keyframe adding threshold
+  surroundingKeyframeDensity: 1.0               # meters, downsample surrounding keyframe poses
   surroundingKeyframeSearchRadius: 50.0         # meters, within n meters scan-to-map optimization (when loop closure disabled)
 
   # Loop closure
@@ -91,7 +91,7 @@ res_save:
     frame_save_en: false
 
 zupt:
-    use_zupt: false                    # enable adaptive zero velocity update
+    use_zupt: true                    # enable adaptive zero velocity update
     zupt_acc_var_threshold:  0.0001   # (m/s²)² per-axis acc variance → full-confidence threshold
     zupt_gyro_var_threshold: 0.00001  # (rad/s)² per-axis gyro variance → full-confidence threshold
 
@@ -114,9 +114,14 @@ zupt:
 occupancy_map:
     gridmap_enabled: true
     resolution: 0.08
+    padding: 8.0
+    max_size: 0.0
+    accumulate: false
+    min_points_per_cell: 2
 
 pointcloud_to_laserscan:
-    min_height: -0.25
-    max_height: 0.8
+    min_height: -0.1
+    max_height: 0.5
+    max_range: 2.5
     angle_min_deg: -90.0
     angle_max_deg: 90.0

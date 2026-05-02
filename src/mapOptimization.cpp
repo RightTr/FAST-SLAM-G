@@ -106,9 +106,6 @@ KD_TREE_PUBLIC<PointType>::PointVector initPoses3D;
 
 map<int, pair<pcl::PointCloud<PointType>, pcl::PointCloud<PointType>>> laserCloudMapContainer;
 
-std::vector<PointTypePose> pendingDenseFramePoses;
-std::vector<pcl::PointCloud<PointType>::Ptr> pendingDenseFrameClouds;
-
 void publishGlobalMap();
 void updatePath(const PointTypePose& pose_in);
 pcl::PointCloud<PointType>::Ptr transformPointCloud(
@@ -340,89 +337,6 @@ PointTypePose trans2PointTypePose(float transformIn[])
     return thisPose6D;
 }
 
-void cacheDenseFrameForNextKeyframe(
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort)
-{
-    pcl::PointCloud<PointType>::Ptr dense_frame(new pcl::PointCloud<PointType>());
-    dense_frame->reserve(feats_undistort->points.size());
-
-    std::unordered_set<std::uint64_t> dynamic_cells;
-    for (const auto &pt : feats_undistort->points) {
-        const PointType point = transformFrontendPointToImu(pt);
-        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
-            continue;
-
-        if (point.z > scanSliceMaxZ && point.z <= scanSliceMaxZ + kDynamicHeightBand)
-            dynamic_cells.insert(denseCellKey(point));
-    }
-
-    for (const auto &pt : feats_undistort->points) {
-        PointType point = transformFrontendPointToImu(pt);
-        if (std::isfinite(point.x) &&
-            std::isfinite(point.y) &&
-            std::isfinite(point.z) &&
-            point.z >= scanSliceMinZ &&
-            point.z <= scanSliceMaxZ &&
-            dynamic_cells.find(denseCellKey(point)) == dynamic_cells.end()) {
-            point.z = 0.0f;
-            dense_frame->push_back(point);
-        }
-    }
-
-    dense_frame = projectCloudToScanPoints(
-        *dense_frame,
-        [](const PointType &point, pcl::PointXYZI &scan_point) {
-            scan_point = point;
-            return true;
-        });
-
-    PointTypePose frame_pose = trans2PointTypePose(transformTobeMapped);
-    frame_pose.time = timeLaserInfoCur;
-    pendingDenseFramePoses.push_back(frame_pose);
-    pendingDenseFrameClouds.push_back(dense_frame);
-}
-
-pcl::PointCloud<PointType>::Ptr buildDenseKeyframeFromPendingFrames(
-    const PointTypePose &keyframe_pose)
-{
-    pcl::PointCloud<PointType>::Ptr dense_keyframe(new pcl::PointCloud<PointType>());
-    if (!pendingDenseFramePoses.empty() &&
-        std::abs(pendingDenseFramePoses.back().time - timeLaserInfoCur) < 1e-6) {
-        pendingDenseFramePoses.back() = keyframe_pose;
-    }
-
-    const float cos_key_yaw = std::cos(keyframe_pose.yaw);
-    const float sin_key_yaw = std::sin(keyframe_pose.yaw);
-    for (std::size_t i = 0; i < pendingDenseFramePoses.size(); ++i) {
-        const auto &frame_pose = pendingDenseFramePoses[i];
-        const auto &frame_cloud = pendingDenseFrameClouds[i];
-        if (!frame_cloud || frame_cloud->empty())
-            continue;
-
-        const float cos_frame_yaw = std::cos(frame_pose.yaw);
-        const float sin_frame_yaw = std::sin(frame_pose.yaw);
-        dense_keyframe->reserve(dense_keyframe->size() + frame_cloud->size());
-        for (const auto &point : frame_cloud->points) {
-            const float world_x =
-                cos_frame_yaw * point.x - sin_frame_yaw * point.y + frame_pose.x;
-            const float world_y =
-                sin_frame_yaw * point.x + cos_frame_yaw * point.y + frame_pose.y;
-            const float dx = world_x - keyframe_pose.x;
-            const float dy = world_y - keyframe_pose.y;
-
-            PointType keyframe_point = point;
-            keyframe_point.x = cos_key_yaw * dx + sin_key_yaw * dy;
-            keyframe_point.y = -sin_key_yaw * dx + cos_key_yaw * dy;
-            keyframe_point.z = 0.0f;
-            dense_keyframe->push_back(keyframe_point);
-        }
-    }
-
-    pendingDenseFramePoses.clear();
-    pendingDenseFrameClouds.clear();
-    return dense_keyframe;
-}
-
 PointTypePose transformPoseOdomToMap(const PointTypePose &pose)
 {
     PointTypePose mapped = pose;
@@ -503,8 +417,6 @@ void allocateMemory()
     featCloudKeyFrames.clear();
     denseCloudKeyFrames.clear();
     initPoses3D.clear();
-    pendingDenseFramePoses.clear();
-    pendingDenseFrameClouds.clear();
 
     for (int i = 0; i < 6; ++i){
         transformTobeMapped[i] = 0;
@@ -760,8 +672,6 @@ void saveKeyFramesAndFactor(
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_down_body,
     pcl::PointCloud<pcl::PointXYZINormal>::Ptr feats_undistort)
 {
-    cacheDenseFrameForNextKeyframe(feats_undistort);
-
     if (!cloudKeyPoses3D->points.empty() && saveFrame() == false)
         return;
 
@@ -832,14 +742,43 @@ void saveKeyFramesAndFactor(
     transformTobeMapped[5] = latestEstimate.translation().z();
 
     pcl::PointCloud<PointType>::Ptr featCloudKeyFrame(new pcl::PointCloud<PointType>());
+    pcl::PointCloud<PointType>::Ptr denseCloudKeyFrame(new pcl::PointCloud<PointType>());
     featCloudKeyFrame->reserve(feats_down_body->points.size());
+    denseCloudKeyFrame->reserve(feats_undistort->points.size());
 
     for (const auto &pt : feats_down_body->points) {
         featCloudKeyFrame->push_back(transformFrontendPointToImu(pt));
     }
 
-    pcl::PointCloud<PointType>::Ptr denseCloudKeyFrame =
-        buildDenseKeyframeFromPendingFrames(thisPose6D);
+    std::unordered_set<std::uint64_t> dynamic_cells;
+    for (const auto &pt : feats_undistort->points) {
+        const PointType point = transformFrontendPointToImu(pt);
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+            continue;
+
+        if (point.z > scanSliceMaxZ && point.z <= scanSliceMaxZ + kDynamicHeightBand)
+            dynamic_cells.insert(denseCellKey(point));
+    }
+
+    for (const auto &pt : feats_undistort->points) {
+        PointType point = transformFrontendPointToImu(pt);
+        if (std::isfinite(point.x) &&
+            std::isfinite(point.y) &&
+            std::isfinite(point.z) &&
+            point.z >= scanSliceMinZ &&
+            point.z <= scanSliceMaxZ &&
+            dynamic_cells.find(denseCellKey(point)) == dynamic_cells.end()) {
+            point.z = 0.0f;
+            denseCloudKeyFrame->push_back(point);
+        }
+    }
+
+    denseCloudKeyFrame = projectCloudToScanPoints(
+        *denseCloudKeyFrame,
+        [](const PointType &point, pcl::PointXYZI &scan_point) {
+            scan_point = point;
+            return true;
+        });
 
     featCloudKeyFrames.push_back(featCloudKeyFrame);
     denseCloudKeyFrames.push_back(denseCloudKeyFrame);
@@ -1056,6 +995,25 @@ void publishGlobalMap() {
         }
         if (need_dense_global) {
             *globalMapDenseKeyFrames += *transformPointCloud2D(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+        }
+    }
+    if (need_dense_global) {
+        globalMapDenseKeyFrames->clear();
+        if (occupancyMapEnabled) {
+            for (int thisKeyInd = 0; thisKeyInd < static_cast<int>(denseCloudKeyFrames.size()); ++thisKeyInd) {
+                *globalMapDenseKeyFrames +=
+                    *transformPointCloud2D(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+            }
+        } else {
+            for (const auto &pose : globalMapSearchPoses3D) {
+                if (pointDistance(cloudKeyPoses3D->points[pose.intensity], cloudKeyPoses3D->points.back()) >
+                    globalMapVisualizationSearchRadius)
+                    continue;
+
+                const int thisKeyInd = static_cast<int>(pose.intensity);
+                *globalMapDenseKeyFrames +=
+                    *transformPointCloud2D(denseCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+            }
         }
     }
     if (need_sparse_global) {

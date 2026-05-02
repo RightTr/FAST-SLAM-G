@@ -54,6 +54,7 @@ float scan_angle_min_deg = -180.0f;
 float scan_angle_max_deg = 180.0f;
 float scanAngleMin = -3.14159f;
 float scanAngleMax = 3.14159f;
+float scanRangeMax = 3.5f;
 
 double init_reg_search_radius = 8.0;
 double init_reg_fitness_score = 0.03;
@@ -105,6 +106,7 @@ void read_pcl2scan_params() {
     rosparam_get("pointcloud_to_laserscan/max_height", scanSliceMaxZ, scanSliceMaxZ);
     rosparam_get("pointcloud_to_laserscan/angle_min_deg", scan_angle_min_deg, scan_angle_min_deg);
     rosparam_get("pointcloud_to_laserscan/angle_max_deg", scan_angle_max_deg, scan_angle_max_deg);
+    rosparam_get("pointcloud_to_laserscan/max_range", scanRangeMax, scanRangeMax);
     scanAngleMin = deg2rad(scan_angle_min_deg);
     scanAngleMax = deg2rad(scan_angle_max_deg);
 }

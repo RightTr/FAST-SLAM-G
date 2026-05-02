@@ -141,7 +141,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "map_edits_file",
-                default_value=default_edits_file,
+                default_value="",
                 description="YAML file that stores manual occupancy-grid edits for online map mode.",
             ),
             DeclareLaunchArgument(

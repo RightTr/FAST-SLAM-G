@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <pcl/point_cloud.h>
@@ -15,15 +17,34 @@ using PointType = pcl::PointXYZI;
 
 bool gridmap_enabled = true;
 bool fill_free_space = true;
+bool accumulate_map = false;
 int min_points_per_cell = 1;
 double resolution = 0.1;
 double padding = 5.0;
+double max_size = 0.0;
 std::string input_topic = "lio_sam/mapping/cloud_global_2d";
 std::string output_topic = "/map";
 std::string map_frame = "map";
 bool use_current_time = true;
 
 OccupancyGridPublisher pubOccupancyGrid;
+std::unordered_set<std::int64_t> accumulated_occupied_cells;
+
+inline std::int64_t makeCellKey(const int cell_x, const int cell_y)
+{
+    return (static_cast<std::int64_t>(cell_x) << 32) ^
+           static_cast<std::uint32_t>(cell_y);
+}
+
+inline int keyToCellX(const std::int64_t key)
+{
+    return static_cast<int>(key >> 32);
+}
+
+inline int keyToCellY(const std::int64_t key)
+{
+    return static_cast<int>(static_cast<std::uint32_t>(key));
+}
 
 inline TimeType get_publish_stamp(const Pcl2MsgConstPtr& msg)
 {
@@ -44,41 +65,68 @@ inline TimeType get_publish_stamp(const Pcl2MsgConstPtr& msg)
 
 void publishOccupancyFromHits(const TimeType &stamp, const std::vector<std::pair<double, double>> &hits)
 {
-    double min_x = std::numeric_limits<double>::max();
-    double min_y = std::numeric_limits<double>::max();
-    double max_x = std::numeric_limits<double>::lowest();
-    double max_y = std::numeric_limits<double>::lowest();
-
+    std::unordered_map<std::int64_t, int> current_hit_count;
+    current_hit_count.reserve(hits.size());
     for (const auto &hit : hits) {
-        min_x = std::min(min_x, hit.first);
-        min_y = std::min(min_y, hit.second);
-        max_x = std::max(max_x, hit.first);
-        max_y = std::max(max_y, hit.second);
+        const int cell_x = static_cast<int>(std::floor(hit.first / resolution));
+        const int cell_y = static_cast<int>(std::floor(hit.second / resolution));
+        current_hit_count[makeCellKey(cell_x, cell_y)] += 1;
     }
 
-    min_x -= padding;
-    min_y -= padding;
-    max_x += padding;
-    max_y += padding;
+    std::unordered_set<std::int64_t> current_occupied_cells;
+    current_occupied_cells.reserve(current_hit_count.size());
+    for (const auto &cell_count : current_hit_count) {
+        if (cell_count.second >= min_points_per_cell) {
+            current_occupied_cells.insert(cell_count.first);
+        }
+    }
+
+    const std::unordered_set<std::int64_t> *occupied_cells = &current_occupied_cells;
+    if (accumulate_map) {
+        accumulated_occupied_cells.insert(current_occupied_cells.begin(), current_occupied_cells.end());
+        occupied_cells = &accumulated_occupied_cells;
+    }
+
+    if (occupied_cells->empty()) {
+        return;
+    }
+
+    int min_cell_x = std::numeric_limits<int>::max();
+    int min_cell_y = std::numeric_limits<int>::max();
+    int max_cell_x = std::numeric_limits<int>::lowest();
+    int max_cell_y = std::numeric_limits<int>::lowest();
+
+    for (const auto key : *occupied_cells) {
+        const int cell_x = keyToCellX(key);
+        const int cell_y = keyToCellY(key);
+        min_cell_x = std::min(min_cell_x, cell_x);
+        min_cell_y = std::min(min_cell_y, cell_y);
+        max_cell_x = std::max(max_cell_x, cell_x);
+        max_cell_y = std::max(max_cell_y, cell_y);
+    }
+
+    const int padding_cells = static_cast<int>(std::ceil(padding / resolution));
+    min_cell_x -= padding_cells;
+    min_cell_y -= padding_cells;
+    max_cell_x += padding_cells;
+    max_cell_y += padding_cells;
+
+    if (max_size > 0.0) {
+        const int center_cell_x = (min_cell_x + max_cell_x) / 2;
+        const int center_cell_y = (min_cell_y + max_cell_y) / 2;
+        const int half_size_cells = static_cast<int>(std::ceil(0.5 * max_size / resolution));
+        min_cell_x = center_cell_x - half_size_cells;
+        max_cell_x = center_cell_x + half_size_cells;
+        min_cell_y = center_cell_y - half_size_cells;
+        max_cell_y = center_cell_y + half_size_cells;
+    }
 
     const auto width = static_cast<std::uint32_t>(
-        std::max(1.0, std::ceil((max_x - min_x) / resolution)));
+        std::max(1, max_cell_x - min_cell_x + 1));
     const auto height = static_cast<std::uint32_t>(
-        std::max(1.0, std::ceil((max_y - min_y) / resolution)));
-
-    std::vector<int> hit_count(width * height, 0);
-    for (const auto &hit : hits) {
-        const int cell_x = static_cast<int>(std::floor((hit.first - min_x) / resolution));
-        const int cell_y = static_cast<int>(std::floor((hit.second - min_y) / resolution));
-        if (cell_x < 0 || cell_y < 0 ||
-            cell_x >= static_cast<int>(width) || cell_y >= static_cast<int>(height)) {
-            continue;
-        }
-
-        const std::size_t index =
-            static_cast<std::size_t>(cell_y) * width + static_cast<std::size_t>(cell_x);
-        hit_count[index] += 1;
-    }
+        std::max(1, max_cell_y - min_cell_y + 1));
+    const double origin_x = static_cast<double>(min_cell_x) * resolution;
+    const double origin_y = static_cast<double>(min_cell_y) * resolution;
 
     OccupancyGridMsg grid;
     grid.header.stamp = stamp;
@@ -87,16 +135,23 @@ void publishOccupancyFromHits(const TimeType &stamp, const std::vector<std::pair
     grid.info.resolution = static_cast<float>(resolution);
     grid.info.width = width;
     grid.info.height = height;
-    grid.info.origin.position.x = min_x;
-    grid.info.origin.position.y = min_y;
+    grid.info.origin.position.x = origin_x;
+    grid.info.origin.position.y = origin_y;
     grid.info.origin.position.z = 0.0;
     grid.info.origin.orientation.w = 1.0;
     grid.data.assign(width * height, fill_free_space ? 0 : -1);
 
-    for (std::size_t idx = 0; idx < hit_count.size(); ++idx) {
-        if (hit_count[idx] >= min_points_per_cell) {
-            grid.data[idx] = 100;
+    for (const auto key : *occupied_cells) {
+        const int cell_x = keyToCellX(key) - min_cell_x;
+        const int cell_y = keyToCellY(key) - min_cell_y;
+        if (cell_x < 0 || cell_y < 0 ||
+            cell_x >= static_cast<int>(width) || cell_y >= static_cast<int>(height)) {
+            continue;
         }
+
+        const std::size_t index =
+            static_cast<std::size_t>(cell_y) * width + static_cast<std::size_t>(cell_x);
+        grid.data[index] = 100;
     }
 
     ros_publish(pubOccupancyGrid, grid);
@@ -123,6 +178,10 @@ void readParams()
 {
     rosparam_get("occupancy_map/gridmap_enabled", gridmap_enabled, true);
     rosparam_get("occupancy_map/resolution", resolution, resolution);
+    rosparam_get("occupancy_map/padding", padding, padding);
+    rosparam_get("occupancy_map/max_size", max_size, max_size);
+    rosparam_get("occupancy_map/accumulate", accumulate_map, accumulate_map);
+    rosparam_get("occupancy_map/min_points_per_cell", min_points_per_cell, min_points_per_cell);
     rosparam_get("publish/use_current_time", use_current_time, true);
 }
 
