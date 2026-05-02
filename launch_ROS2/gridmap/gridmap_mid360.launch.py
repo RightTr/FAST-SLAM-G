@@ -30,7 +30,7 @@ def generate_launch_description():
 
     fast_lio_params = [
         {"sam_enable": True},
-        {"feature_extract_enable": True},
+        {"feature_extract_enable": False},
         {"point_filter_num": 1},
         {"max_iteration": 3},
         {"filter_size_surf": 0.1},

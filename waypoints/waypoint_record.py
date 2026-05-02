@@ -16,7 +16,7 @@ class WaypointRecorder(Node):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         default_output = os.path.join(script_dir, "waypoints.yaml")
 
-        self.declare_parameter("odom_topic", "/Odometry")
+        self.declare_parameter("odom_topic", "/OdometryGlobal")
         self.declare_parameter("output_file", default_output)
         self.declare_parameter("frame_id", "")
         self.declare_parameter("name", "")
