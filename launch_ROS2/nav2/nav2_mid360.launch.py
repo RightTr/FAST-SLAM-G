@@ -22,6 +22,10 @@ def generate_launch_description():
     publish_waypoints = LaunchConfiguration("publish_waypoints")
     waypoints_file = LaunchConfiguration("waypoints_file")
     waypoint_marker_topic = LaunchConfiguration("waypoint_marker_topic")
+    launch_task_dispatcher = LaunchConfiguration("launch_task_dispatcher")
+    task_command_topic = LaunchConfiguration("task_command_topic")
+    task_status_topic = LaunchConfiguration("task_status_topic")
+    task_result_flag_topic = LaunchConfiguration("task_result_flag_topic")
     map_file = LaunchConfiguration("map")
     map_source = LaunchConfiguration("map_source")
     map_edits_file = LaunchConfiguration("map_edits_file")
@@ -180,6 +184,26 @@ def generate_launch_description():
                 default_value="/waypoints_markers",
                 description="MarkerArray topic used to display waypoints in RViz.",
             ),
+            DeclareLaunchArgument(
+                "launch_task_dispatcher",
+                default_value="true",
+                description="Start the numeric waypoint task dispatcher.",
+            ),
+            DeclareLaunchArgument(
+                "task_command_topic",
+                default_value="/waypoint_task_id",
+                description="std_msgs/Int32 topic used to trigger waypoint tasks.",
+            ),
+            DeclareLaunchArgument(
+                "task_status_topic",
+                default_value="/waypoint_task_status",
+                description="std_msgs/String topic used to publish waypoint task progress and result.",
+            ),
+            DeclareLaunchArgument(
+                "task_result_flag_topic",
+                default_value="/waypoint_task_result",
+                description="std_msgs/Int8 topic used to publish final waypoint task result: 1 success, 0 failure.",
+            ),
             Node(
                 condition=IfCondition(PythonExpression(["'", map_source, "' == 'offline'"])),
                 package="nav2_map_server",
@@ -307,6 +331,19 @@ def generate_launch_description():
                     {"use_sim_time": use_sim_time},
                     {"waypoints_file": waypoints_file},
                     {"marker_topic": waypoint_marker_topic},
+                ],
+                arguments=["--ros-args", "--log-level", log_level],
+            ),
+            Node(
+                condition=IfCondition(launch_task_dispatcher),
+                package="fast_lio_sam_g",
+                executable="waypoint_task_dispatcher.py",
+                name="waypoint_task_dispatcher",
+                output="screen",
+                parameters=[
+                    {"command_topic": task_command_topic},
+                    {"status_topic": task_status_topic},
+                    {"result_flag_topic": task_result_flag_topic},
                 ],
                 arguments=["--ros-args", "--log-level", log_level],
             ),

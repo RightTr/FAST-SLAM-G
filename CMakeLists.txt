@@ -187,6 +187,9 @@ if(USE_ROS2)
       waypoints/waypoint_record.py
       waypoints/waypoint_publish.py
       waypoints/waypoint_markers.py
+      waypoints/waypoint_task_record.py
+      waypoints/waypoint_task_run.py
+      waypoints/waypoint_task_dispatcher.py
       tools/occupancy_map_editor.py
     DESTINATION lib/${PROJECT_NAME}
   )

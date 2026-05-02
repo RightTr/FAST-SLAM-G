@@ -80,6 +80,7 @@ frontend_scan:
 
 reloc:
     reloc_en: true
+    pose_estimate_icp: false     # false: /initialpose directly sets pose; true: refine /initialpose with ICP
     init_reg_search_radius: 3.0
     init_reg_fitness_score: 0.03
 

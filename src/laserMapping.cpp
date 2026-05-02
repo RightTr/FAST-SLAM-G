@@ -76,6 +76,7 @@ PublishPoseFrame publish_pose_frame = PublishPoseFrame::Imu;
 bool   publish_use_current_time = true;
 TimeType publish_stamp;
 bool reloc_en = false;
+bool pose_estimate_icp = false;
 bool sam_enable = false;
 bool map_load = false;
 bool map_save = false;
@@ -144,6 +145,10 @@ MeasureGroup Measures;
 esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
 state_ikfom state_point;
 vect3 pos_lid;
+
+Eigen::Isometry3d makeIsometry(
+    const Eigen::Vector3d& position,
+    const Eigen::Quaterniond& orientation);
 
 PathMsg path;
 OdomMsg odomAftMapped;
@@ -613,6 +618,57 @@ void update_state_ikfom()
     kf.change_x(state_updated);
 }
 
+Eigen::Isometry3d imuPoseFromPublishedPose(
+    const Eigen::Isometry3d& published_pose,
+    const state_ikfom& state)
+{
+    const Eigen::Isometry3d imu_from_lidar =
+        makeIsometry(state.offset_T_L_I, Eigen::Quaterniond(state.offset_R_L_I.toRotationMatrix()));
+
+    switch (publish_pose_frame)
+    {
+    case PublishPoseFrame::Imu:
+        return published_pose;
+    case PublishPoseFrame::Lidar:
+        return published_pose * imu_from_lidar.inverse();
+    case PublishPoseFrame::BaseLink:
+    {
+        const Eigen::Isometry3d base_from_lidar =
+            makeIsometry(baseLinkToLidarTranslation, baseLinkToLidarRotation);
+        const Eigen::Isometry3d imu_from_base =
+            imu_from_lidar * base_from_lidar.inverse();
+        return published_pose * imu_from_base.inverse();
+    }
+    }
+    return published_pose;
+}
+
+void applyInitialImuPose(
+    const Eigen::Vector3d& position,
+    const Eigen::Quaterniond& orientation)
+{
+    state_ikfom state_updated = kf.get_x();
+    state_updated.pos = position;
+    state_updated.rot = orientation.normalized();
+    state_updated.vel = Zero3d;
+    state_point = state_updated;
+
+    p_imu->Reset();
+    kf.change_x(state_updated);
+    feats_down_world->clear();
+    ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
+    mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
+    mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
+    mapFrameOriginInitialized = true;
+    if (sam_enable)
+        updateSamState(state_updated);
+
+    euler_cur = SO3ToEuler(state_point.rot);
+    pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+    flg_first_scan = true;
+    init_reg_done.store(true);
+}
+
 bool consumeInitialPoseRegistration()
 {
     Pose initial_pose;
@@ -622,15 +678,30 @@ bool consumeInitialPoseRegistration()
     }
     init_reg_flag.store(false);
 
-    if (!sam_enable)
-    {
-        ROS_PRINT_WARN("Initialpose registration needs sam_enable=true and a loaded keyframe map");
-        return false;
-    }
-
     const Eigen::Vector3d initial_position(initial_pose._x, initial_pose._y, initial_pose._z);
     const Eigen::Quaterniond initial_orientation(initial_pose._qw, initial_pose._qx,
                                                     initial_pose._qy,initial_pose._qz);
+    const Eigen::Isometry3d initial_published_pose =
+        makeIsometry(initial_position, initial_orientation);
+    const Eigen::Isometry3d initial_imu_pose =
+        imuPoseFromPublishedPose(initial_published_pose, kf.get_x());
+    const Eigen::Vector3d initial_imu_position = initial_imu_pose.translation();
+    const Eigen::Quaterniond initial_imu_orientation =
+        Eigen::Quaterniond(initial_imu_pose.linear()).normalized();
+
+    if (!pose_estimate_icp)
+    {
+        applyInitialImuPose(initial_imu_position, initial_imu_orientation);
+        ROS_PRINT_INFO("Initialpose applied directly without ICP");
+        return true;
+    }
+
+    if (!sam_enable)
+    {
+        ROS_PRINT_WARN("Initialpose ICP needs sam_enable=true and a loaded keyframe map");
+        return false;
+    }
+
     pcl::PointCloud<pcl::PointXYZI>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZI>());
     source_cloud->reserve(feats_down_body->size());
     for (const auto &point : feats_down_body->points)
@@ -659,8 +730,8 @@ bool consumeInitialPoseRegistration()
     Eigen::Quaterniond registered_orientation;
     const bool success = registerInitialPoseToKeyframes3D(
         source_cloud,
-        initial_position,
-        initial_orientation,
+        initial_imu_position,
+        initial_imu_orientation,
         registered_position,
         registered_orientation,
         nullptr);
@@ -668,26 +739,8 @@ bool consumeInitialPoseRegistration()
     if (!success)
         return false;
 
-    state_ikfom state_updated = kf.get_x();
-    state_updated.pos = registered_position;
-    state_updated.rot = registered_orientation.normalized();
-    state_updated.vel = Zero3d;
-    state_point = state_updated;
-
-    p_imu->Reset();
-    kf.change_x(state_updated);
-    feats_down_world->clear();
-    ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
-    mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
-    mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
-    mapFrameOriginInitialized = true;
-    if (sam_enable)
-        updateSamState(state_updated);
-
-    euler_cur = SO3ToEuler(state_point.rot);
-    pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-    flg_first_scan = true;
-    init_reg_done.store(true);
+    applyInitialImuPose(registered_position, registered_orientation);
+    ROS_PRINT_INFO("Initialpose applied with ICP registration");
     return true;
 }
 
@@ -1271,6 +1324,7 @@ int main(int argc, char** argv)
     rosparam_get("publish/effect_pub_en", effect_pub_en, false);
     rosparam_get("frontend_scan/topic", frontend_scan_topic, std::string("/frontend_scan"));
     rosparam_get("reloc/reloc_en", reloc_en, false);
+    rosparam_get("reloc/pose_estimate_icp", pose_estimate_icp, false);
     rosparam_get("max_iteration", NUM_MAX_ITERATIONS, 4);
     rosparam_get("keyframe_map/map_path", map_path, std::string(""));
     rosparam_get("keyframe_map/map_load", map_load, false);

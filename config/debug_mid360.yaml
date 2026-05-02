@@ -54,6 +54,7 @@ res_save:
 
 reloc:
   reloc_en: true
+  pose_estimate_icp: false       # false: /initialpose directly sets pose; true: refine /initialpose with ICP
 
 zupt:
     use_zupt: false              # enable zero velocity update
