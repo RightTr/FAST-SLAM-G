@@ -116,8 +116,8 @@ Pose initialpose_state;
 std::atomic<bool> init_reg_flag(false);
 std::atomic<bool> init_reg_done(false);
 std::atomic<bool> drop_flag(false);
-bool published_odom_origin_initialized = false;
-Eigen::Isometry3d publishedOdomFromInternalWorld = Eigen::Isometry3d::Identity();
+bool odom_origin_ready = false;
+Eigen::Isometry3d odom_from_lio = Eigen::Isometry3d::Identity();
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -657,9 +657,9 @@ void applyInitialImuPose(
     kf.change_x(state_updated);
     feats_down_world->clear();
     ikdtree.delete_tree_nodes(&ikdtree.Root_Node);
-    mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
-    mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
-    mapFrameOriginInitialized = true;
+    map_rot_from_odom = Eigen::Quaterniond::Identity();
+    map_pos_from_odom = Eigen::Vector3d::Zero();
+    map_origin_ready = true;
     if (sam_enable)
         updateSamState(state_updated);
 
@@ -808,13 +808,13 @@ Eigen::Isometry3d poseInPublishFrame(const Eigen::Isometry3d& imu_pose, const st
 Eigen::Isometry3d poseInMapFrame(const Eigen::Isometry3d& internal_world_pose)
 {
     Eigen::Isometry3d map_from_internal_world = Eigen::Isometry3d::Identity();
-    map_from_internal_world.linear() = mapFrameRotationFromOdom.toRotationMatrix();
-    map_from_internal_world.translation() = mapFrameTranslationFromOdom;
+    map_from_internal_world.linear() = map_rot_from_odom.toRotationMatrix();
+    map_from_internal_world.translation() = map_pos_from_odom;
     return map_from_internal_world * internal_world_pose;
 }
 
 template<typename PointT>
-void transformPointInternalWorldToGlobalFrameInPlace(PointT &point)
+void toGlobalFrame(PointT &point)
 {
     if (global_frame_id() == mapFrame)
     {
@@ -823,7 +823,7 @@ void transformPointInternalWorldToGlobalFrameInPlace(PointT &point)
     else
     {
         const Eigen::Vector3d position =
-            publishedOdomFromInternalWorld * Eigen::Vector3d(point.x, point.y, point.z);
+            odom_from_lio * Eigen::Vector3d(point.x, point.y, point.z);
         point.x = position.x();
         point.y = position.y();
         point.z = position.z();
@@ -887,7 +887,7 @@ void publish_frame_world(const Pcl2Publisher & pubLaserCloudFull)
         {
             RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
                                 &laserCloudWorld->points[i]);
-            transformPointInternalWorldToGlobalFrameInPlace(laserCloudWorld->points[i]);
+            toGlobalFrame(laserCloudWorld->points[i]);
         }
         Pcl2Msg laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
@@ -1014,7 +1014,7 @@ void publish_effect_world(const Pcl2Publisher & pubLaserCloudEffect)
     {
         RGBpointBodyToWorld(&laserCloudOri->points[i], \
                             &laserCloudWorld->points[i]);
-        transformPointInternalWorldToGlobalFrameInPlace(laserCloudWorld->points[i]);
+        toGlobalFrame(laserCloudWorld->points[i]);
     }
     Pcl2Msg laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
@@ -1027,11 +1027,11 @@ void publish_map(const Pcl2Publisher & pubLaserCloudMap)
 {
     PointCloudXYZI::Ptr mapCloud = featsFromMap;
     PointCloudXYZI::Ptr mappedCloud;
-    if (mapFrameOriginInitialized || published_odom_origin_initialized)
+    if (map_origin_ready || odom_origin_ready)
     {
         mappedCloud.reset(new PointCloudXYZI(*featsFromMap));
         for (auto &point : mappedCloud->points)
-            transformPointInternalWorldToGlobalFrameInPlace(point);
+            toGlobalFrame(point);
         mapCloud = mappedCloud;
     }
 
@@ -1055,13 +1055,13 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
             Eigen::Vector3d(pose._x, pose._y, pose._z),
             Eigen::Quaterniond(pose._qw, pose._qx, pose._qy, pose._qz));
         const Eigen::Isometry3d published_internal_pose = poseInPublishFrame(imu_pose, state_point);
-        if (!published_odom_origin_initialized)
+        if (!odom_origin_ready)
         {
-            publishedOdomFromInternalWorld = published_internal_pose.inverse();
-            published_odom_origin_initialized = true;
+            odom_from_lio = published_internal_pose.inverse();
+            odom_origin_ready = true;
         }
         const Eigen::Isometry3d published_pose =
-            publishedOdomFromInternalWorld * published_internal_pose;
+            odom_from_lio * published_internal_pose;
 
         OdomMsg msg;
         msg.header.stamp = get_ros_time(pose._timestamp);
@@ -1089,7 +1089,7 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
             tf_msg.child_frame_id = highFrequencyIMUlinkFrame;
             set_geometry_transform(
                 tf_msg.transform,
-                publishedOdomFromInternalWorld * imu_pose);
+                odom_from_lio * imu_pose);
             break;
         case PublishPoseFrame::Lidar:
         case PublishPoseFrame::BaseLink:
@@ -1118,7 +1118,7 @@ void publish_odometryhighfreq(PoseBuffer& pbuffer, const OdomPublisher& pubOdomH
 void publish_odometry(const OdomPublisher & pubOdomAftMapped, const Eigen::Isometry3d& imu_internal_pose)
 {
     const Eigen::Isometry3d published_pose =
-        publishedOdomFromInternalWorld * poseInPublishFrame(imu_internal_pose, state_point);
+        odom_from_lio * poseInPublishFrame(imu_internal_pose, state_point);
     odomAftMapped.header.frame_id = odometryFrame;
     odomAftMapped.child_frame_id = published_pose_frame_id();
     set_geometry_pose(odomAftMapped.pose.pose, published_pose);
@@ -1162,7 +1162,7 @@ void publish_path(const PathPublisher pubPath)
     if (global_frame_id() == mapFrame)
         pose = poseInMapFrame(pose);
     else
-        pose = publishedOdomFromInternalWorld * pose;
+        pose = odom_from_lio * pose;
     set_geometry_pose(msg_body_pose.pose, pose);
     msg_body_pose.header.stamp = publish_stamp;
 
@@ -1374,14 +1374,6 @@ int main(int argc, char** argv)
                               base_to_lidar_R[3], base_to_lidar_R[4], base_to_lidar_R[5],
                               base_to_lidar_R[6], base_to_lidar_R[7], base_to_lidar_R[8];
     baseLinkToLidarRotation = Eigen::Quaterniond(base_to_lidar_rotation).normalized();
-    ROS_PRINT_INFO(
-        "publish pose_frame=%d, Nav2 robot frame should be '%s'. "
-        "base_link -> lidar uses lidar origin in base_link: [%.3f, %.3f, %.3f]",
-        static_cast<int>(publish_pose_frame),
-        baseLinkFrame.c_str(),
-        baseLinkToLidarTranslation.x(),
-        baseLinkToLidarTranslation.y(),
-        baseLinkToLidarTranslation.z());
     rosparam_get("zupt/use_zupt",                use_zupt,                false);
     rosparam_get("zupt/zupt_acc_var_threshold",  zupt_acc_var_threshold,  0.001);
     rosparam_get("zupt/zupt_gyro_var_threshold", zupt_gyro_var_threshold, 0.0001);
@@ -1673,12 +1665,12 @@ int main(int argc, char** argv)
             geoQuat.w = state_point.rot.coeffs()[3];
             const Eigen::Isometry3d odom_pose = makeIsometry(state_point.pos, state_point.rot.normalized());
             const Eigen::Isometry3d published_internal_pose = poseInPublishFrame(odom_pose, state_point);
-            if (!published_odom_origin_initialized)
+            if (!odom_origin_ready)
             {
-                publishedOdomFromInternalWorld = published_internal_pose.inverse();
-                published_odom_origin_initialized = true;
+                odom_from_lio = published_internal_pose.inverse();
+                odom_origin_ready = true;
             }
-            if (!mapFrameOriginInitialized)
+            if (!map_origin_ready)
             {
                 setMapFrameOriginFromPose(
                     published_internal_pose.translation(),
@@ -1700,7 +1692,7 @@ int main(int argc, char** argv)
             }
             const Eigen::Isometry3d map_pose = poseInMapFrame(published_internal_pose);
             const Eigen::Isometry3d published_odom_pose =
-                publishedOdomFromInternalWorld * published_internal_pose;
+                odom_from_lio * published_internal_pose;
             update_publish_stamp();
             publish_map_to_odom_tf(map_pose, published_odom_pose);
 

@@ -561,8 +561,6 @@ void performLoopClosure()
         loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);
         if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000)
             return;
-        // if (pubHistoryKeyFrames.getNumSubscribers() != 0)
-        //     publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
     }
 
     // ICP Settings
@@ -581,14 +579,6 @@ void performLoopClosure()
 
     if (icp.hasConverged() == false || icp.getFitnessScore() > historyKeyframeFitnessScore)
         return;
-
-    // publish corrected cloud
-    // if (pubIcpKeyFrames.getNumSubscribers() != 0)
-    // {
-    //     pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
-    //     pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, icp.getFinalTransformation());
-    //     publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
-    // }
 
     // Get pose transformation
     float x, y, z, roll, pitch, yaw;

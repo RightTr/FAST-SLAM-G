@@ -61,9 +61,9 @@ double init_reg_fitness_score = 0.03;
 
 int ikdtreeSearchNeighborNum;
 bool occupancyMapEnabled = true;
-bool mapFrameOriginInitialized = false;
-Eigen::Quaterniond mapFrameRotationFromOdom = Eigen::Quaterniond::Identity();
-Eigen::Vector3d mapFrameTranslationFromOdom = Eigen::Vector3d::Zero();
+bool map_origin_ready = false;
+Eigen::Quaterniond map_rot_from_odom = Eigen::Quaterniond::Identity();
+Eigen::Vector3d map_pos_from_odom = Eigen::Vector3d::Zero();
 
 void read_liosam_params() {
     // CPU parameters
@@ -71,7 +71,8 @@ void read_liosam_params() {
 
     // Keyframe Strategy
     rosparam_get("lio_sam/surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold, 1.0f);
-    rosparam_get("lio_sam/surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 0.2f);
+    rosparam_get("lio_sam/surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold, 11.5f);
+    surroundingkeyframeAddingAngleThreshold = deg2rad(surroundingkeyframeAddingAngleThreshold);
     rosparam_get("lio_sam/surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0f);
 
     // Loop closure parameters
@@ -120,7 +121,7 @@ void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,
                                const Eigen::Quaterniond &origin_orientation)
 {
     const Eigen::Quaterniond origin_yaw = yawOnlyQuaternion(origin_orientation.normalized());
-    mapFrameRotationFromOdom = origin_yaw.conjugate().normalized();
-    mapFrameTranslationFromOdom = -(mapFrameRotationFromOdom * origin_position);
-    mapFrameOriginInitialized = true;
+    map_rot_from_odom = origin_yaw.conjugate().normalized();
+    map_pos_from_odom = -(map_rot_from_odom * origin_position);
+    map_origin_ready = true;
 }

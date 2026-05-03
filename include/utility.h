@@ -63,9 +63,9 @@ extern double init_reg_fitness_score;
 
 extern int ikdtreeSearchNeighborNum;
 extern bool occupancyMapEnabled;
-extern bool mapFrameOriginInitialized;
-extern Eigen::Quaterniond mapFrameRotationFromOdom;
-extern Eigen::Vector3d mapFrameTranslationFromOdom;
+extern bool map_origin_ready;
+extern Eigen::Quaterniond map_rot_from_odom;
+extern Eigen::Vector3d map_pos_from_odom;
 
 extern std::atomic<bool> flg_exit;
 
@@ -77,12 +77,12 @@ void setMapFrameOriginFromPose(const Eigen::Vector3d &origin_position,
                                const Eigen::Quaterniond &origin_orientation);
 inline Eigen::Vector3d transformPositionOdomToMap(const Eigen::Vector3d &position)
 {
-    return mapFrameRotationFromOdom * position + mapFrameTranslationFromOdom;
+    return map_rot_from_odom * position + map_pos_from_odom;
 }
 
 inline Eigen::Quaterniond transformOrientationOdomToMap(const Eigen::Quaterniond &orientation)
 {
-    return (mapFrameRotationFromOdom * orientation).normalized();
+    return (map_rot_from_odom * orientation).normalized();
 }
 
 template<typename PointT>

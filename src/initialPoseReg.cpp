@@ -28,12 +28,12 @@ pcl::PointCloud<PointType>::Ptr transformPointCloud(
 namespace
 {
 constexpr double kCoarseMaxCorr = 2.0;
-constexpr double kFineMaxCorr = 0.2;
+constexpr double kFineMaxCorr = 0.5;
 constexpr int kIcpIterations = 100;
 constexpr float kLeafSize = 0.05f;
-constexpr double kMaxDeltaXY = 0.8;
-constexpr double kMaxDeltaYaw = 0.35;
-constexpr int kMaxKeyframes = 5;
+constexpr double kMaxDeltaXY = 2.0;
+constexpr double kMaxDeltaYaw = 0.8;
+constexpr int kMaxKeyframes = 15;
 
 bool run_icp(
     const pcl::PointCloud<PointType>::ConstPtr &source_ds,
