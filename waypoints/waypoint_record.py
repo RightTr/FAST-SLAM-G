@@ -4,20 +4,27 @@ import datetime
 import os
 
 import rclpy
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+
+
+def default_points_file():
+    package_prefix = get_package_prefix("fast_lio_sam_g")
+    workspace_root = os.path.dirname(os.path.dirname(package_prefix))
+    source_points_dir = os.path.join(workspace_root, "src", "FAST-SLAM-G", "waypoints", "points")
+    if os.path.isdir(os.path.dirname(source_points_dir)):
+        return os.path.join(source_points_dir, "waypoints.yaml")
+    return os.path.join(get_package_share_directory("fast_lio_sam_g"), "waypoints", "points", "waypoints.yaml")
 
 
 class WaypointRecorder(Node):
     def __init__(self):
         super().__init__("waypoint_recorder")
 
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        default_output = os.path.join(script_dir, "waypoints.yaml")
-
         self.declare_parameter("odom_topic", "/OdometryGlobal")
-        self.declare_parameter("output_file", default_output)
+        self.declare_parameter("output_file", default_points_file())
         self.declare_parameter("frame_id", "")
         self.declare_parameter("name", "")
 

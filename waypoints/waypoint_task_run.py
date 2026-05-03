@@ -5,6 +5,7 @@ import sys
 
 import rclpy
 import yaml
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 from rclpy.action import ActionClient
@@ -12,27 +13,14 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
 
-try:
-    from ament_index_python.packages import get_package_prefix, get_package_share_directory
-except ImportError:
-    get_package_prefix = None
-    get_package_share_directory = None
-
 
 def default_tasks_dir():
-    if get_package_prefix is not None and get_package_share_directory is not None:
-        try:
-            package_prefix = get_package_prefix("fast_lio_sam_g")
-            workspace_root = os.path.dirname(os.path.dirname(package_prefix))
-            source_tasks_dir = os.path.join(
-                workspace_root, "src", "FAST-SLAM-G", "waypoints", "tasks")
-            if os.path.isdir(os.path.dirname(source_tasks_dir)):
-                return source_tasks_dir
-            return os.path.join(get_package_share_directory("fast_lio_sam_g"), "waypoints", "tasks")
-        except Exception:
-            pass
-
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks")
+    package_prefix = get_package_prefix("fast_lio_sam_g")
+    workspace_root = os.path.dirname(os.path.dirname(package_prefix))
+    source_tasks_dir = os.path.join(workspace_root, "src", "FAST-SLAM-G", "waypoints", "tasks")
+    if os.path.isdir(os.path.dirname(source_tasks_dir)):
+        return source_tasks_dir
+    return os.path.join(get_package_share_directory("fast_lio_sam_g"), "waypoints", "tasks")
 
 
 class WaypointTaskRunner(Node):

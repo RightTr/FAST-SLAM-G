@@ -178,7 +178,7 @@ if(USE_ROS2)
   DIRECTORY
     launch_ROS2
     config
-    map
+    gridmap
     waypoints
     DESTINATION share/${PROJECT_NAME}
   )
@@ -190,7 +190,7 @@ if(USE_ROS2)
       waypoints/waypoint_task_record.py
       waypoints/waypoint_task_run.py
       waypoints/waypoint_task_dispatcher.py
-      tools/occupancy_map_editor.py
+      gridmap/occupancy_map_editor.py
     DESTINATION lib/${PROJECT_NAME}
   )
   install(
